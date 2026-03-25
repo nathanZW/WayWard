@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+html {
+  background: #121214;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: rgba(18, 18, 20, 0.95);
+  color: #ffffff;
+  font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  --bg-base: rgba(18, 18, 20, 0.05);
+  --bg-panel: rgba(24, 24, 27, 0.3);
+  --bg-input: rgba(30, 30, 34, 0.5);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(255, 255, 255, 0.2);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.5);
+  --accent-purple: #8b5cf6;
+  --accent-purple-glow: rgba(139, 92, 246, 0.2);
+  --radius-lg: 16px;
+  --radius-md: 10px;
+  --radius-sm: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+  padding: 12px;
+  overflow: hidden;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+}
