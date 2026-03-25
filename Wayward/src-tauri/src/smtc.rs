@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use windows::Foundation::TimeSpan;
-use windows::Security::Cryptography::CryptographicBuffer;
+use windows::Storage::Streams::DataReader;
 use windows::Media::Control::{GlobalSystemMediaTransportControlsSession, GlobalSystemMediaTransportControlsSessionManager};
 use windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus;
 
@@ -17,25 +17,31 @@ pub struct TrackInfo {
     album_art: Option<String>,
 }
 
-async fn get_album_art_base64(session: &GlobalSystemMediaTransportControlsSession) -> Option<String> {
-    let thumb = session.TryGetAlbumArtAsync().await.ok()??;
-    
-    if thumb.Size() == 0 {
-        return None;
-    }
-    
-    let buffer = CryptographicBuffer::CopyToBuffer(&thumb).ok()?;
-    let len = buffer.Length();
-    
-    if len == 0 {
-        return None;
-    }
-    
-    let mut data = vec![0u8; len as usize];
-    buffer.CopyTo(&mut data).ok()?;
-    
-    let base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
-    Some(format!("data:image/jpeg;base64,{}", base64))
+async fn get_album_art_base64(session: GlobalSystemMediaTransportControlsSession) -> Option<String> {
+    // Use spawn_blocking to handle non-Send Windows COM interfaces
+    tauri::async_runtime::spawn_blocking(move || {
+        // Use tauri async runtime to block on async operations
+        tauri::async_runtime::block_on(async {
+            let properties = session.TryGetMediaPropertiesAsync().ok()?.await.ok()?;
+            
+            let thumbnail_ref = properties.Thumbnail().ok()?;
+            let stream = thumbnail_ref.OpenReadAsync().ok()?.await.ok()?;
+            
+            let size = stream.Size().ok()? as u32;
+            if size == 0 {
+                return None;
+            }
+            
+            let reader = DataReader::CreateDataReader(&stream).ok()?;
+            reader.LoadAsync(size).ok()?.await.ok()?;
+            
+            let mut buffer = vec![0u8; size as usize];
+            reader.ReadBytes(&mut buffer).ok()?;
+            
+            let base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &buffer);
+            Some(format!("data:image/jpeg;base64,{}", base64))
+        })
+    }).await.ok()?
 }
 
 pub fn start_smtc_listener(app: AppHandle) {
@@ -91,7 +97,7 @@ pub fn start_smtc_listener(app: AppHandle) {
                     }
                 };
 
-                let album_art = get_album_art_base64(&session).await;
+                let album_art = get_album_art_base64(session.clone()).await;
 
                 if let Ok(properties_async) = session.TryGetMediaPropertiesAsync() {
                     match properties_async.await {
