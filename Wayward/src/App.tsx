@@ -42,7 +42,9 @@ function extractColours(src: string): Promise<[string, string]> {
       // Collect colour buckets (skip near-black and near-white)
       const buckets: Record<string, { r: number; g: number; b: number; count: number }> = {};
       for (let i = 0; i < data.length; i += 4) {
-        const r = data[i], g = data[i + 1], b = data[i + 2];
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
         const brightness = (r + g + b) / 3;
         // Skip very dark or very light pixels
         if (brightness < 40 || brightness > 220) continue;
@@ -56,7 +58,7 @@ function extractColours(src: string): Promise<[string, string]> {
       if (sorted.length === 0) return resolve(["#8b5cf6", "#ec4899"]);
 
       const toHex = (c: { r: number; g: number; b: number }) =>
-        `#${[c.r, c.g, c.b].map(v => v.toString(16).padStart(2, "0")).join("")}`;
+        `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 
       const primary = sorted[0];
       // Pick second colour that is visually different from the first
@@ -98,7 +100,7 @@ function App() {
     root.style.setProperty("--accent-c1", accentColours[0]);
     root.style.setProperty("--accent-c2", accentColours[1]);
     // Also derive glow
-    root.style.setProperty("--accent-glow", accentColours[0] + "55");
+    root.style.setProperty("--accent-glow", `${accentColours[0]}55`);
   }, [accentColours]);
 
   // Re-extract colours whenever album art changes
@@ -170,11 +172,11 @@ function App() {
       window.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
+  }, [handlePlayPause, handleSkipNext, handleSkipPrevious]);
 
   useEffect(() => {
     const unlisten = listen<TrackInfo>("smtc-update", (event) => {
-      setTrackInfo(prev => {
+      setTrackInfo((prev) => {
         const next = event.payload;
         if (!next.album_art && prev.album_art && next.title === prev.title) {
           return { ...next, album_art: prev.album_art };
@@ -184,8 +186,8 @@ function App() {
     });
 
     return () => {
-      unlisten.then(f => f());
-    }
+      unlisten.then((f) => f());
+    };
   }, []);
 
   const progressPercent = trackInfo.duration > 0
@@ -194,7 +196,7 @@ function App() {
 
   return (
     <div className="container">
-      {/* Dynamic ambient gradient background — reacts to album art colours */}
+      {/* Dynamic ambient gradient background reacts to album art colours */}
       <div className="ambient-gradient" aria-hidden="true" />
 
       {/* Search Header */}
@@ -209,6 +211,7 @@ function App() {
             />
             <div className="esc-hint">ESC</div>
           </div>
+
           <div className="shortcuts-area" ref={shortcutsAreaRef}>
             <button
               className="settings-btn"
@@ -219,46 +222,50 @@ function App() {
             >
               <Settings size={18} />
             </button>
-          {/* Shortcuts Dropdown */}
-        <div className={`shortcuts-dropdown-wrapper ${showShortcuts ? 'visible' : ''}`}>
-          <div className="shortcuts-dropdown" ref={shortcutsRef}>
-            <div className="shortcuts-header">
-              <span>Keyboard Shortcuts</span>
-              <button
-                className="close-shortcuts"
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setShowShortcuts(false); }}
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <div className="shortcut-item">
-              <div className="shortcut-keys"><kbd>Space</kbd></div>
-              <span>Play/Pause</span>
-            </div>
-            <div className="shortcut-item">
-              <div className="shortcut-keys"><kbd>←</kbd></div>
-              <span>Previous track</span>
-            </div>
-            <div className="shortcut-item">
-              <div className="shortcut-keys"><kbd>→</kbd></div>
-              <span>Next track</span>
-            </div>
-            <div className="shortcut-item">
-              <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>+</kbd></div>
-              <span>Skip track</span>
-            </div>
-            <div className="shortcut-item">
-              <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>-</kbd></div>
-              <span>Save track</span>
-            </div>
-            <div className="shortcut-item">
-              <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>]</kbd></div>
-              <span>Queue track</span>
+
+            <div className={`shortcuts-dropdown-wrapper ${showShortcuts ? "visible" : ""}`}>
+              <div className="shortcuts-dropdown" ref={shortcutsRef}>
+                <div className="shortcuts-header">
+                  <span>Keyboard Shortcuts</span>
+                  <button
+                    className="close-shortcuts"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowShortcuts(false);
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>Space</kbd></div>
+                  <span>Play/Pause</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>&larr;</kbd></div>
+                  <span>Previous track</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>&rarr;</kbd></div>
+                  <span>Next track</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>+</kbd></div>
+                  <span>Skip track</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>-</kbd></div>
+                  <span>Save track</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>]</kbd></div>
+                  <span>Queue track</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-          </div>
       </div>
 
       {/* Main Content Area */}
@@ -273,7 +280,9 @@ function App() {
           </div>
           <div className="track-info">
             <h2 className="track-title">{trackInfo.title || "No track"}</h2>
-            <p className="track-artist">{trackInfo.artist || "Unknown artist"} · {trackInfo.album_title}</p>
+            <p className="track-artist">
+              {trackInfo.artist || "Unknown artist"} &middot; {trackInfo.album_title}
+            </p>
             <div className="track-meta">
               <div className="badges">
                 <span className="badge active">{trackInfo.status}</span>
@@ -292,7 +301,9 @@ function App() {
               <SkipBack size={18} fill="currentColor" />
             </button>
             <button className="play-pause-btn" onClick={handlePlayPause}>
-              {trackInfo.status === "Playing" ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
+              {trackInfo.status === "Playing"
+                ? <Pause size={22} fill="currentColor" />
+                : <Play size={22} fill="currentColor" />}
             </button>
             <button className="playback-control-btn" onClick={handleSkipNext}>
               <SkipForward size={18} fill="currentColor" />
@@ -302,7 +313,7 @@ function App() {
 
         {/* Tabs */}
         <div className="tabs">
-          {["Discover", "Similar albums", "Queue"].map(tab => (
+          {["Discover", "Similar albums", "Queue"].map((tab) => (
             <div
               key={tab}
               className={`tab ${activeTab === tab ? "active" : ""}`}
@@ -320,7 +331,7 @@ function App() {
               <div className="album-art album-art-large" />
               <div className="swipe-card-content">
                 <h3 className="swipe-card-title">King and Lionheart</h3>
-                <p className="swipe-card-artist">Of Monsters and Men · My Head Is an Animal</p>
+                <p className="swipe-card-artist">Of Monsters and Men &middot; My Head Is an Animal</p>
                 <div className="badges">
                   <span className="badge">Synth-pop</span>
                   <span className="badge">2020</span>
