@@ -15,7 +15,7 @@
         "label": "main",
         "title": "wayward",
         "width": 640,
-        "height": 720,
+        "height": 440,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
