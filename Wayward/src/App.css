@@ -23,6 +23,10 @@
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
+.container.is-idle {
+  background: rgba(22, 22, 26, 0.58);
+}
+
 .container::before {
   content: "";
   position: absolute;
@@ -53,6 +57,14 @@
   /* Slight noise/grain via SVG filter for depth */
   filter: blur(20px);
   opacity: 0.56;
+}
+
+.container.is-idle .ambient-gradient {
+  background:
+    radial-gradient(ellipse 72% 62% at 18% 12%, rgba(248, 244, 236, 0.34) 0%, transparent 72%),
+    radial-gradient(ellipse 58% 52% at 82% 78%, rgba(222, 216, 206, 0.28) 0%, transparent 70%),
+    radial-gradient(ellipse 88% 58% at 50% 50%, rgba(255, 255, 255, 0.08) 0%, transparent 82%);
+  opacity: 0.42;
 }
 
 /* Ensure all content sits above the ambient layer */
@@ -271,6 +283,13 @@
   transition: box-shadow 1.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.container.is-idle .now-playing-card {
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 10px 28px rgba(246, 239, 228, 0.08);
+}
+
 .album-art {
   width: 44px;
   height: 44px;
@@ -346,6 +365,12 @@
   transition: background 1.6s ease, border-color 1.6s ease, color 1.6s ease;
 }
 
+.badge.active.idle {
+  background: rgba(244, 237, 226, 0.12);
+  border-color: rgba(244, 237, 226, 0.22);
+  color: rgba(255, 248, 240, 0.88);
+}
+
 /* ─────────────────────────────────────────────────────────────
    Progress bar
    ───────────────────────────────────────────────────────────── */
@@ -374,6 +399,10 @@
   transition:
     background 1.6s cubic-bezier(0.4, 0, 0.2, 1),
     box-shadow 1.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.container.is-idle .progress-fill {
+  box-shadow: none;
 }
 
 /* ─────────────────────────────────────────────────────────────

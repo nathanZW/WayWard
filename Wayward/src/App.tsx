@@ -16,6 +16,23 @@ interface TrackInfo {
   album_art: string | null;
 }
 
+const NEUTRAL_TRACK: TrackInfo = {
+  title: "",
+  artist: "",
+  album_artist: "",
+  album_title: "",
+  status: "Idle",
+  position: 0,
+  duration: 0,
+  album_art: null
+};
+
+const NEUTRAL_ACCENT: [string, string] = ["#f2ede4", "#d7d1c8"];
+
+function isNeutralTrack(track: TrackInfo): boolean {
+  return track.status === "Idle" && !track.title && !track.artist && !track.album_title;
+}
+
 function formatTime(secs: number): string {
   if (secs <= 0 || !isFinite(secs)) return "0:00";
   const totalSeconds = Math.round(secs);
@@ -79,20 +96,12 @@ function extractColours(src: string): Promise<[string, string]> {
 
 function App() {
   const [activeTab, setActiveTab] = useState("Discover");
-  const [trackInfo, setTrackInfo] = useState<TrackInfo>({
-    title: "Midnight Rain",
-    artist: "Taylor Swift",
-    album_artist: "",
-    album_title: "Midnights",
-    status: "Playing",
-    position: 83,
-    duration: 214,
-    album_art: null
-  });
-  const [accentColours, setAccentColours] = useState<[string, string]>(["#8b5cf6", "#ec4899"]);
+  const [trackInfo, setTrackInfo] = useState<TrackInfo>(NEUTRAL_TRACK);
+  const [accentColours, setAccentColours] = useState<[string, string]>(NEUTRAL_ACCENT);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const shortcutsAreaRef = useRef<HTMLDivElement>(null);
   const shortcutsRef = useRef<HTMLDivElement>(null);
+  const idleState = isNeutralTrack(trackInfo);
 
   // Update CSS variables whenever accent colours change
   useEffect(() => {
@@ -108,9 +117,9 @@ function App() {
     if (trackInfo.album_art) {
       extractColours(trackInfo.album_art).then(setAccentColours);
     } else {
-      setAccentColours(["#8b5cf6", "#ec4899"]);
+      setAccentColours(idleState ? NEUTRAL_ACCENT : ["#8b5cf6", "#ec4899"]);
     }
-  }, [trackInfo.album_art]);
+  }, [idleState, trackInfo.album_art]);
 
   const handlePlayPause = useCallback(async () => {
     try {
@@ -178,7 +187,14 @@ function App() {
     const unlisten = listen<TrackInfo>("smtc-update", (event) => {
       setTrackInfo((prev) => {
         const next = event.payload;
-        if (!next.album_art && prev.album_art && next.title === prev.title) {
+        if (
+          !isNeutralTrack(next) &&
+          !next.album_art &&
+          prev.album_art &&
+          next.title === prev.title &&
+          next.artist === prev.artist &&
+          next.album_title === prev.album_title
+        ) {
           return { ...next, album_art: prev.album_art };
         }
         return next;
@@ -193,9 +209,14 @@ function App() {
   const progressPercent = trackInfo.duration > 0
     ? (trackInfo.position / trackInfo.duration) * 100
     : 0;
+  const trackTitle = idleState ? "Nothing playing" : trackInfo.title;
+  const trackSubtitle = idleState
+    ? "Waiting for a system media session"
+    : [trackInfo.artist || "Unknown artist", trackInfo.album_title].filter(Boolean).join(" · ");
+  const statusLabel = idleState ? "Ready" : trackInfo.status;
 
   return (
-    <div className="container">
+    <div className={`container ${idleState ? "is-idle" : ""}`}>
       {/* Dynamic ambient gradient background reacts to album art colours */}
       <div className="ambient-gradient" aria-hidden="true" />
 
@@ -279,13 +300,11 @@ function App() {
             )}
           </div>
           <div className="track-info">
-            <h2 className="track-title">{trackInfo.title || "No track"}</h2>
-            <p className="track-artist">
-              {trackInfo.artist || "Unknown artist"} &middot; {trackInfo.album_title}
-            </p>
+            <h2 className="track-title">{trackTitle}</h2>
+            <p className="track-artist">{trackSubtitle}</p>
             <div className="track-meta">
               <div className="badges">
-                <span className="badge active">{trackInfo.status}</span>
+                <span className={`badge active ${idleState ? "idle" : ""}`}>{statusLabel}</span>
               </div>
               <div className="progress-bar-container">
                 <span>{formatTime(trackInfo.position)}</span>

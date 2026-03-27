@@ -17,6 +17,21 @@ pub struct TrackInfo {
     album_art: Option<String>,
 }
 
+impl TrackInfo {
+    fn neutral() -> Self {
+        Self {
+            title: String::new(),
+            artist: String::new(),
+            album_artist: String::new(),
+            album_title: String::new(),
+            status: "Idle".to_string(),
+            position: 0.0,
+            duration: 0.0,
+            album_art: None,
+        }
+    }
+}
+
 fn get_playback_status_str(session: &GlobalSystemMediaTransportControlsSession) -> &'static str {
     match session.GetPlaybackInfo() {
         Ok(info) => match info.PlaybackStatus() {
@@ -84,7 +99,10 @@ pub async fn emit_current_state(app: &AppHandle) {
 
     let session = match manager.GetCurrentSession() {
         Ok(s) => s,
-        Err(_) => return,
+        Err(_) => {
+            let _ = app.emit("smtc-update", TrackInfo::neutral());
+            return;
+        }
     };
 
     let status = get_playback_status_str(&session);
@@ -126,11 +144,13 @@ pub fn start_smtc_listener(app: AppHandle) {
         };
 
         let app_handle = Arc::new(app);
-        let mut cached_title = String::new();
+        let mut cached_track_key: Option<String> = None;
         let mut cached_album_art: Option<String> = None;
+        let mut had_session = false;
 
         loop {
             if let Ok(session) = manager.GetCurrentSession() {
+                had_session = true;
                 let status = get_playback_status_str(&session);
                 let (position, duration) = get_timeline(&session);
 
@@ -138,18 +158,23 @@ pub fn start_smtc_listener(app: AppHandle) {
                     match properties_async.await {
                         Ok(props) => {
                             let title = props.Title().unwrap_or_default().to_string();
+                            let artist = props.Artist().unwrap_or_default().to_string();
+                            let album_artist = props.AlbumArtist().unwrap_or_default().to_string();
+                            let album_title = props.AlbumTitle().unwrap_or_default().to_string();
+                            let track_key =
+                                format!("{}\u{1f}{}\u{1f}{}", title, artist, album_title);
 
                             // Only re-fetch album art on track change.
-                            if title != cached_title {
+                            if cached_track_key.as_ref() != Some(&track_key) {
                                 cached_album_art = get_album_art_base64(session.clone()).await;
-                                cached_title = title.clone();
+                                cached_track_key = Some(track_key);
                             }
 
                             let info = TrackInfo {
                                 title,
-                                artist: props.Artist().unwrap_or_default().to_string(),
-                                album_artist: props.AlbumArtist().unwrap_or_default().to_string(),
-                                album_title: props.AlbumTitle().unwrap_or_default().to_string(),
+                                artist,
+                                album_artist,
+                                album_title,
                                 status: status.to_string(),
                                 position,
                                 duration,
@@ -163,6 +188,11 @@ pub fn start_smtc_listener(app: AppHandle) {
                         }
                     }
                 }
+            } else if had_session {
+                had_session = false;
+                cached_track_key = None;
+                cached_album_art = None;
+                let _ = app_handle.emit("smtc-update", TrackInfo::neutral());
             }
             // Poll at 500ms for steady position updates.
             // Instant status updates come from emit_current_state() called by commands.
