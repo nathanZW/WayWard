@@ -1,12 +1,12 @@
 mod smtc;
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 use tauri::command;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use window_vibrancy::apply_acrylic;
 
 #[command]
-async fn toggle_playback() -> Result<(), String> {
+async fn toggle_playback(app: AppHandle) -> Result<(), String> {
     use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
     
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
@@ -17,36 +17,19 @@ async fn toggle_playback() -> Result<(), String> {
     let session = manager.GetCurrentSession()
         .map_err(|e| format!("Failed to get current session: {:?}", e))?;
 
-    let playback_info = session.GetPlaybackInfo()
-        .map_err(|e| format!("Failed to get playback info: {:?}", e))?;
+    session.TryTogglePlayPauseAsync()
+        .map_err(|e| format!("Failed to toggle: {:?}", e))?
+        .await
+        .map_err(|e| format!("Failed to toggle (async): {:?}", e))?;
 
-    let status = playback_info.PlaybackStatus()
-        .map_err(|e| format!("Failed to get playback status: {:?}", e))?;
-
-    use windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus;
-    
-    match status {
-        GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing => {
-            session.TryPauseAsync()
-                .map_err(|e| format!("Failed to pause: {:?}", e))?
-                .await
-                .map_err(|e| format!("Failed to pause (async): {:?}", e))?;
-        }
-        GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused |
-        GlobalSystemMediaTransportControlsSessionPlaybackStatus::Stopped => {
-            session.TryPlayAsync()
-                .map_err(|e| format!("Failed to play: {:?}", e))?
-                .await
-                .map_err(|e| format!("Failed to play (async): {:?}", e))?;
-        }
-        _ => return Err("Unknown playback status".to_string()),
-    }
+    // Immediately emit the new state so the UI updates without waiting for the poll.
+    smtc::emit_current_state(&app).await;
 
     Ok(())
 }
 
 #[command]
-async fn skip_next() -> Result<(), String> {
+async fn skip_next(app: AppHandle) -> Result<(), String> {
     use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
     
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
@@ -62,11 +45,13 @@ async fn skip_next() -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to skip next (async): {:?}", e))?;
 
+    smtc::emit_current_state(&app).await;
+
     Ok(())
 }
 
 #[command]
-async fn skip_previous() -> Result<(), String> {
+async fn skip_previous(app: AppHandle) -> Result<(), String> {
     use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
     
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
@@ -81,6 +66,8 @@ async fn skip_previous() -> Result<(), String> {
         .map_err(|e| format!("Failed to skip previous: {:?}", e))?
         .await
         .map_err(|e| format!("Failed to skip previous (async): {:?}", e))?;
+
+    smtc::emit_current_state(&app).await;
 
     Ok(())
 }

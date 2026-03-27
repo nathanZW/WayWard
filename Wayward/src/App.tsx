@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Search, Pause, Play, PlusCircle, Settings, X, SkipBack, SkipForward } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -39,29 +39,29 @@ function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const shortcutsRef = useRef<HTMLDivElement>(null);
 
-  const handlePlayPause = async () => {
+  const handlePlayPause = useCallback(async () => {
     try {
       await invoke("toggle_playback");
     } catch (e) {
       console.error("Failed to toggle playback:", e);
     }
-  };
+  }, []);
 
-  const handleSkipNext = async () => {
+  const handleSkipNext = useCallback(async () => {
     try {
       await invoke("skip_next");
     } catch (e) {
       console.error("Failed to skip next:", e);
     }
-  };
+  }, []);
 
-  const handleSkipPrevious = async () => {
+  const handleSkipPrevious = useCallback(async () => {
     try {
       await invoke("skip_previous");
     } catch (e) {
       console.error("Failed to skip previous:", e);
     }
-  };
+  }, []);
 
   // Minimal frontend global shortcut hook for the view
   useEffect(() => {
@@ -104,10 +104,18 @@ function App() {
     };
   }, []);
 
-  // SMTC Listener Listener
+  // SMTC event listener — backend sends instant updates on user actions + poll for position
   useEffect(() => {
     const unlisten = listen<TrackInfo>("smtc-update", (event) => {
-      setTrackInfo(event.payload);
+      setTrackInfo(prev => {
+        const next = event.payload;
+        // Keep existing album art if the new event has none (e.g. from emit_current_state)
+        // and we're still on the same track.
+        if (!next.album_art && prev.album_art && next.title === prev.title) {
+          return { ...next, album_art: prev.album_art };
+        }
+        return next;
+      });
     });
 
     return () => {
