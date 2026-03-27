@@ -15,7 +15,7 @@
         "label": "main",
         "title": "wayward",
         "width": 640,
-        "height": 440,
+        "height": 392,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
@@ -23,7 +23,7 @@
         "skipTaskbar": true,
         "center": true,
         "hiddenTitle": true,
-        "backgroundColor": "#121214"
+        "backgroundColor": "#00000000"
       }
     ],
     "security": {

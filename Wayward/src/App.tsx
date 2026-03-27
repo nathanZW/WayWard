@@ -24,6 +24,57 @@ function formatTime(secs: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+/** Extract 2 dominant vibrant colours from a base64/URL image via canvas sampling */
+function extractColours(src: string): Promise<[string, string]> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      // Downsample for speed
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve(["#8b5cf6", "#ec4899"]);
+      ctx.drawImage(img, 0, 0, 32, 32);
+      const data = ctx.getImageData(0, 0, 32, 32).data;
+
+      // Collect colour buckets (skip near-black and near-white)
+      const buckets: Record<string, { r: number; g: number; b: number; count: number }> = {};
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        const brightness = (r + g + b) / 3;
+        // Skip very dark or very light pixels
+        if (brightness < 40 || brightness > 220) continue;
+        // Quantise to 6-bit per channel bucket key
+        const key = `${r >> 2},${g >> 2},${b >> 2}`;
+        if (!buckets[key]) buckets[key] = { r, g, b, count: 0 };
+        buckets[key].count++;
+      }
+
+      const sorted = Object.values(buckets).sort((a, b) => b.count - a.count);
+      if (sorted.length === 0) return resolve(["#8b5cf6", "#ec4899"]);
+
+      const toHex = (c: { r: number; g: number; b: number }) =>
+        `#${[c.r, c.g, c.b].map(v => v.toString(16).padStart(2, "0")).join("")}`;
+
+      const primary = sorted[0];
+      // Pick second colour that is visually different from the first
+      const secondary =
+        sorted.find((c) => {
+          const dr = Math.abs(c.r - primary.r);
+          const dg = Math.abs(c.g - primary.g);
+          const db = Math.abs(c.b - primary.b);
+          return dr + dg + db > 80;
+        }) ?? sorted[Math.min(1, sorted.length - 1)];
+
+      resolve([toHex(primary), toHex(secondary)]);
+    };
+    img.onerror = () => resolve(["#8b5cf6", "#ec4899"]);
+    img.src = src;
+  });
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState("Discover");
   const [trackInfo, setTrackInfo] = useState<TrackInfo>({
@@ -36,8 +87,28 @@ function App() {
     duration: 214,
     album_art: null
   });
+  const [accentColours, setAccentColours] = useState<[string, string]>(["#8b5cf6", "#ec4899"]);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const shortcutsAreaRef = useRef<HTMLDivElement>(null);
   const shortcutsRef = useRef<HTMLDivElement>(null);
+
+  // Update CSS variables whenever accent colours change
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--accent-c1", accentColours[0]);
+    root.style.setProperty("--accent-c2", accentColours[1]);
+    // Also derive glow
+    root.style.setProperty("--accent-glow", accentColours[0] + "55");
+  }, [accentColours]);
+
+  // Re-extract colours whenever album art changes
+  useEffect(() => {
+    if (trackInfo.album_art) {
+      extractColours(trackInfo.album_art).then(setAccentColours);
+    } else {
+      setAccentColours(["#8b5cf6", "#ec4899"]);
+    }
+  }, [trackInfo.album_art]);
 
   const handlePlayPause = useCallback(async () => {
     try {
@@ -63,15 +134,12 @@ function App() {
     }
   }, []);
 
-  // Minimal frontend global shortcut hook for the view
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setShowShortcuts(false);
         await getCurrentWindow().hide();
       }
-
-      // Action callbacks (to be implemented with backend)
       if (e.key === "ArrowLeft" || (e.ctrlKey && e.key === "+")) {
         e.preventDefault();
         handleSkipPrevious();
@@ -91,7 +159,7 @@ function App() {
     };
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (shortcutsRef.current && !shortcutsRef.current.contains(e.target as Node)) {
+      if (shortcutsAreaRef.current && !shortcutsAreaRef.current.contains(e.target as Node)) {
         setShowShortcuts(false);
       }
     };
@@ -104,13 +172,10 @@ function App() {
     };
   }, []);
 
-  // SMTC event listener — backend sends instant updates on user actions + poll for position
   useEffect(() => {
     const unlisten = listen<TrackInfo>("smtc-update", (event) => {
       setTrackInfo(prev => {
         const next = event.payload;
-        // Keep existing album art if the new event has none (e.g. from emit_current_state)
-        // and we're still on the same track.
         if (!next.album_art && prev.album_art && next.title === prev.title) {
           return { ...next, album_art: prev.album_art };
         }
@@ -123,12 +188,15 @@ function App() {
     }
   }, []);
 
-  const progressPercent = trackInfo.duration > 0 
-    ? (trackInfo.position / trackInfo.duration) * 100 
+  const progressPercent = trackInfo.duration > 0
+    ? (trackInfo.position / trackInfo.duration) * 100
     : 0;
 
   return (
     <div className="container">
+      {/* Dynamic ambient gradient background — reacts to album art colours */}
+      <div className="ambient-gradient" aria-hidden="true" />
+
       {/* Search Header */}
       <div className="search-section">
         <div className="search-header">
@@ -141,64 +209,56 @@ function App() {
             />
             <div className="esc-hint">ESC</div>
           </div>
-          <button
-            className="settings-btn"
-            onClick={() => setShowShortcuts(!showShortcuts)}
-          >
-            <Settings size={18} />
-          </button>
-        </div>
-
-        {/* Shortcuts Dropdown */}
+          <div className="shortcuts-area" ref={shortcutsAreaRef}>
+            <button
+              className="settings-btn"
+              type="button"
+              aria-expanded={showShortcuts}
+              aria-haspopup="dialog"
+              onClick={() => setShowShortcuts((prev) => !prev)}
+            >
+              <Settings size={18} />
+            </button>
+          {/* Shortcuts Dropdown */}
         <div className={`shortcuts-dropdown-wrapper ${showShortcuts ? 'visible' : ''}`}>
           <div className="shortcuts-dropdown" ref={shortcutsRef}>
             <div className="shortcuts-header">
               <span>Keyboard Shortcuts</span>
-              <button 
-                className="close-shortcuts" 
+              <button
+                className="close-shortcuts"
+                type="button"
                 onClick={(e) => { e.stopPropagation(); setShowShortcuts(false); }}
               >
                 <X size={14} />
               </button>
             </div>
             <div className="shortcut-item">
-              <div className="shortcut-keys">
-                <kbd>Space</kbd>
-              </div>
+              <div className="shortcut-keys"><kbd>Space</kbd></div>
               <span>Play/Pause</span>
             </div>
             <div className="shortcut-item">
-              <div className="shortcut-keys">
-                <kbd>←</kbd>
-              </div>
+              <div className="shortcut-keys"><kbd>←</kbd></div>
               <span>Previous track</span>
             </div>
             <div className="shortcut-item">
-              <div className="shortcut-keys">
-                <kbd>→</kbd>
-              </div>
+              <div className="shortcut-keys"><kbd>→</kbd></div>
               <span>Next track</span>
             </div>
             <div className="shortcut-item">
-              <div className="shortcut-keys">
-                <kbd>Ctrl</kbd><kbd>+</kbd>
-              </div>
+              <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>+</kbd></div>
               <span>Skip track</span>
             </div>
             <div className="shortcut-item">
-              <div className="shortcut-keys">
-                <kbd>Ctrl</kbd><kbd>-</kbd>
-              </div>
+              <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>-</kbd></div>
               <span>Save track</span>
             </div>
             <div className="shortcut-item">
-              <div className="shortcut-keys">
-                <kbd>Ctrl</kbd><kbd>]</kbd>
-              </div>
+              <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>]</kbd></div>
               <span>Queue track</span>
             </div>
           </div>
         </div>
+          </div>
       </div>
 
       {/* Main Content Area */}
@@ -208,7 +268,7 @@ function App() {
             {trackInfo.album_art ? (
               <img src={trackInfo.album_art} alt="Album art" className="album-art-inner" />
             ) : (
-              <div className="album-art-inner"></div>
+              <div className="album-art-inner" />
             )}
           </div>
           <div className="track-info">
@@ -221,7 +281,7 @@ function App() {
               <div className="progress-bar-container">
                 <span>{formatTime(trackInfo.position)}</span>
                 <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${progressPercent}%` }}></div>
+                  <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
                 </div>
                 <span>{formatTime(trackInfo.duration)}</span>
               </div>
@@ -253,20 +313,19 @@ function App() {
           ))}
         </div>
 
-        {/* Swipe Deck Area (Placeholder for Framer Motion) */}
+        {/* Swipe Deck Area */}
         <div className="deck-container">
           <div className="swipe-card-area">
-            {/* We will add Framer motion cards here */}
             <div className="swipe-card">
-               <div className="album-art album-art-large"></div>
-               <div className="swipe-card-content">
-                  <h3 className="swipe-card-title">Levitating</h3>
-                  <p className="swipe-card-artist">Dua Lipa · Future Nostalgia</p>
-                  <div className="badges">
-                    <span className="badge">Synth-pop</span>
-                    <span className="badge">2020</span>
-                  </div>
-               </div>
+              <div className="album-art album-art-large" />
+              <div className="swipe-card-content">
+                <h3 className="swipe-card-title">King and Lionheart</h3>
+                <p className="swipe-card-artist">Of Monsters and Men · My Head Is an Animal</p>
+                <div className="badges">
+                  <span className="badge">Synth-pop</span>
+                  <span className="badge">2020</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
