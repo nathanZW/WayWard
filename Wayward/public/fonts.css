@@ -1,2 +1,7 @@
-/* Open Sans - Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&family=Open+Sans:ital,wght@1,400&display=swap');
+/* Open Sans from Google Fonts - Using Import for simplicity */
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap');
+
+/* Fallback font-face support for existing CSS references */
+:root {
+  --font-open-sans: 'Open Sans', sans-serif;
+}
