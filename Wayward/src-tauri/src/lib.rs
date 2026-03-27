@@ -92,6 +92,10 @@ pub fn run() {
                         } else {
                             let _ = window.show();
                             let _ = window.set_focus();
+                            let app_handle = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                smtc::emit_current_state(&app_handle).await;
+                            });
                         }
                     }
                 }

@@ -1,9 +1,12 @@
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use windows::Foundation::TimeSpan;
 use windows::Storage::Streams::DataReader;
 use windows::Media::Control::{GlobalSystemMediaTransportControlsSession, GlobalSystemMediaTransportControlsSessionManager};
 use windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus;
+
+const VISIBLE_POLL_MS: u64 = 500;
+const HIDDEN_POLL_MS: u64 = 3_000;
 
 #[derive(serde::Serialize, Clone, Debug)]
 pub struct TrackInfo {
@@ -194,9 +197,15 @@ pub fn start_smtc_listener(app: AppHandle) {
                 cached_album_art = None;
                 let _ = app_handle.emit("smtc-update", TrackInfo::neutral());
             }
-            // Poll at 500ms for steady position updates.
-            // Instant status updates come from emit_current_state() called by commands.
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let poll_ms = app_handle
+                .get_webview_window("main")
+                .and_then(|window| window.is_visible().ok())
+                .map(|is_visible| if is_visible { VISIBLE_POLL_MS } else { HIDDEN_POLL_MS })
+                .unwrap_or(VISIBLE_POLL_MS);
+
+            // Poll faster while visible for smooth timeline updates, slower while hidden
+            // to keep the overlay warm without doing unnecessary background work.
+            tokio::time::sleep(std::time::Duration::from_millis(poll_ms)).await;
         }
     });
 }

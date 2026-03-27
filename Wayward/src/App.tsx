@@ -294,7 +294,12 @@ function App() {
         <div className="now-playing-card">
           <div className="album-art">
             {trackInfo.album_art ? (
-              <img src={trackInfo.album_art} alt="Album art" className="album-art-inner" />
+              <img
+                key={trackInfo.album_art}
+                src={trackInfo.album_art}
+                alt="Album art"
+                className="album-art-inner album-art-image"
+              />
             ) : (
               <div className="album-art-inner" />
             )}
