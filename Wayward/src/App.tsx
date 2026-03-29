@@ -1,8 +1,17 @@
-import { useEffect, useState, useRef, useCallback } from "react";
-import { Search, Pause, Play, PlusCircle, Settings, X, SkipBack, SkipForward } from "lucide-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Pause,
+  Play,
+  PlusCircle,
+  Search,
+  Settings,
+  SkipBack,
+  SkipForward,
+  X
+} from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
 
 interface TrackInfo {
@@ -16,6 +25,43 @@ interface TrackInfo {
   album_art: string | null;
 }
 
+interface RGB {
+  r: number;
+  g: number;
+  b: number;
+}
+
+interface HSL {
+  h: number;
+  s: number;
+  l: number;
+}
+
+interface AccentTheme {
+  accent1: string;
+  accent2: string;
+  glow: string;
+  surface: string;
+  surfaceStrong: string;
+  border: string;
+  textPrimary: string;
+  textSecondary: string;
+  accentInk: string;
+  shadow: string;
+  mood: string;
+}
+
+interface DeckCard {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  badges: string[];
+  note: string;
+}
+
+const APP_TABS = ["Discover", "Similar albums", "Queue"] as const;
+type AppTab = typeof APP_TABS[number];
+
 const NEUTRAL_TRACK: TrackInfo = {
   title: "",
   artist: "",
@@ -28,168 +74,570 @@ const NEUTRAL_TRACK: TrackInfo = {
 };
 
 const NEUTRAL_ACCENT: [string, string] = ["#f2ede4", "#d7d1c8"];
+const LIVE_FALLBACK_ACCENT: [string, string] = ["#8b5cf6", "#ec4899"];
+const SAMPLE_SIZE = 24;
+
+const DARK_RGB: RGB = { r: 13, g: 15, b: 20 };
+const LIGHT_RGB: RGB = { r: 248, g: 244, b: 236 };
+const OFF_WHITE_RGB: RGB = { r: 255, g: 250, b: 244 };
+
+let paletteContext: CanvasRenderingContext2D | null = null;
 
 function isNeutralTrack(track: TrackInfo): boolean {
   return track.status === "Idle" && !track.title && !track.artist && !track.album_title;
 }
 
 function formatTime(secs: number): string {
-  if (secs <= 0 || !isFinite(secs)) return "0:00";
+  if (secs <= 0 || !Number.isFinite(secs)) return "0:00";
   const totalSeconds = Math.round(secs);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-/** Extract 2 dominant vibrant colours from a base64/URL image via canvas sampling */
-function extractColours(src: string): Promise<[string, string]> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      // Downsample for speed
-      canvas.width = 32;
-      canvas.height = 32;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return resolve(["#8b5cf6", "#ec4899"]);
-      ctx.drawImage(img, 0, 0, 32, 32);
-      const data = ctx.getImageData(0, 0, 32, 32).data;
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
-      // Collect colour buckets (skip near-black and near-white)
-      const buckets: Record<string, { r: number; g: number; b: number; count: number }> = {};
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const brightness = (r + g + b) / 3;
-        // Skip very dark or very light pixels
-        if (brightness < 40 || brightness > 220) continue;
-        // Quantise to 6-bit per channel bucket key
-        const key = `${r >> 2},${g >> 2},${b >> 2}`;
-        if (!buckets[key]) buckets[key] = { r, g, b, count: 0 };
-        buckets[key].count++;
-      }
+function hexToRgb(hex: string): RGB {
+  const normalized = hex.replace("#", "");
+  const value = normalized.length === 3
+    ? normalized.split("").map((char) => char + char).join("")
+    : normalized;
 
-      const sorted = Object.values(buckets).sort((a, b) => b.count - a.count);
-      if (sorted.length === 0) return resolve(["#8b5cf6", "#ec4899"]);
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16)
+  };
+}
 
-      const toHex = (c: { r: number; g: number; b: number }) =>
-        `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+function toHex(rgb: RGB): string {
+  return `#${[rgb.r, rgb.g, rgb.b]
+    .map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
 
-      const primary = sorted[0];
-      // Pick second colour that is visually different from the first
-      const secondary =
-        sorted.find((c) => {
-          const dr = Math.abs(c.r - primary.r);
-          const dg = Math.abs(c.g - primary.g);
-          const db = Math.abs(c.b - primary.b);
-          return dr + dg + db > 80;
-        }) ?? sorted[Math.min(1, sorted.length - 1)];
+function toRgba(rgb: RGB, alpha: number): string {
+  return `rgba(${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)}, ${clamp(alpha, 0, 1)})`;
+}
 
-      resolve([toHex(primary), toHex(secondary)]);
-    };
-    img.onerror = () => resolve(["#8b5cf6", "#ec4899"]);
-    img.src = src;
+function mixRgb(from: RGB, to: RGB, amount: number): RGB {
+  const ratio = clamp(amount, 0, 1);
+  return {
+    r: from.r + (to.r - from.r) * ratio,
+    g: from.g + (to.g - from.g) * ratio,
+    b: from.b + (to.b - from.b) * ratio
+  };
+}
+
+function rgbToHsl(rgb: RGB): HSL {
+  const r = rgb.r / 255;
+  const g = rgb.g / 255;
+  const b = rgb.b / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+
+  let h = 0;
+  const l = (max + min) / 2;
+  const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+
+  if (delta !== 0) {
+    if (max === r) {
+      h = 60 * (((g - b) / delta) % 6);
+    } else if (max === g) {
+      h = 60 * ((b - r) / delta + 2);
+    } else {
+      h = 60 * ((r - g) / delta + 4);
+    }
+  }
+
+  return {
+    h: h < 0 ? h + 360 : h,
+    s,
+    l
+  };
+}
+
+function hslToRgb(hsl: HSL): RGB {
+  const hue = ((hsl.h % 360) + 360) % 360;
+  const saturation = clamp(hsl.s, 0, 1);
+  const lightness = clamp(hsl.l, 0, 1);
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const segment = hue / 60;
+  const x = chroma * (1 - Math.abs((segment % 2) - 1));
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+
+  if (segment >= 0 && segment < 1) {
+    r = chroma;
+    g = x;
+  } else if (segment < 2) {
+    r = x;
+    g = chroma;
+  } else if (segment < 3) {
+    g = chroma;
+    b = x;
+  } else if (segment < 4) {
+    g = x;
+    b = chroma;
+  } else if (segment < 5) {
+    r = x;
+    b = chroma;
+  } else {
+    r = chroma;
+    b = x;
+  }
+
+  const match = lightness - chroma / 2;
+  return {
+    r: (r + match) * 255,
+    g: (g + match) * 255,
+    b: (b + match) * 255
+  };
+}
+
+function getLuminance(rgb: RGB): number {
+  const channels = [rgb.r, rgb.g, rgb.b].map((value) => {
+    const normalized = value / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function getContrastRatio(a: RGB, b: RGB): number {
+  const lighter = Math.max(getLuminance(a), getLuminance(b));
+  const darker = Math.min(getLuminance(a), getLuminance(b));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function getSaturation(rgb: RGB): number {
+  const max = Math.max(rgb.r, rgb.g, rgb.b) / 255;
+  const min = Math.min(rgb.r, rgb.g, rgb.b) / 255;
+  if (max === 0) return 0;
+  return (max - min) / max;
+}
+
+function getDistance(a: RGB, b: RGB): number {
+  return Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
+}
+
+function getHueDistance(a: number, b: number): number {
+  const difference = Math.abs(a - b);
+  return Math.min(difference, 360 - difference);
+}
+
+function rotateHue(hue: number, amount: number): number {
+  return ((hue + amount) % 360 + 360) % 360;
+}
+
+function getWarmth(rgb: RGB): number {
+  const warmth = (rgb.r + rgb.g - rgb.b * 1.35) / 255;
+  return clamp(warmth, -1, 1);
+}
+
+function normalizeAccent(rgb: RGB, idle: boolean): RGB {
+  const hsl = rgbToHsl(rgb);
+  const minimumSaturation = idle ? 0.06 : 0.24;
+  const maximumSaturation = idle ? 0.24 : 0.82;
+  const minimumLightness = idle ? 0.72 : 0.28;
+  const maximumLightness = idle ? 0.9 : 0.64;
+
+  return hslToRgb({
+    h: hsl.h,
+    s: clamp(
+      hsl.s < minimumSaturation
+        ? minimumSaturation + (hsl.s * 0.35)
+        : hsl.s,
+      minimumSaturation,
+      maximumSaturation
+    ),
+    l: clamp(hsl.l, minimumLightness, maximumLightness)
   });
 }
 
+function deriveSecondaryAccent(primary: RGB, candidates: RGB[], idle: boolean): RGB {
+  const primaryHsl = rgbToHsl(primary);
+
+  const bestCandidate = candidates
+    .filter((candidate) => getDistance(candidate, primary) > 36)
+    .map((candidate) => {
+      const candidateHsl = rgbToHsl(candidate);
+      const contrast = Math.abs(getLuminance(candidate) - getLuminance(primary));
+      const hueDistance = getHueDistance(candidateHsl.h, primaryHsl.h) / 180;
+      const warmth = Math.max(0, getWarmth(candidate));
+      const saturation = candidateHsl.s;
+      const brightness = candidateHsl.l;
+
+      return {
+        colour: candidate,
+        score:
+          saturation * 3.2 +
+          contrast * 2.8 +
+          hueDistance * 1.7 +
+          warmth * 1.6 +
+          brightness * 0.9
+      };
+    })
+    .sort((left, right) => right.score - left.score)[0]?.colour;
+
+  if (bestCandidate) {
+    return normalizeAccent(bestCandidate, idle);
+  }
+
+  const derivedHue = primaryHsl.h >= 80 && primaryHsl.h <= 220
+    ? rotateHue(primaryHsl.h, -42)
+    : rotateHue(primaryHsl.h, 28);
+
+  return normalizeAccent(hslToRgb({
+    h: derivedHue,
+    s: clamp(primaryHsl.s + (idle ? 0.06 : 0.18), idle ? 0.1 : 0.32, 0.78),
+    l: clamp(primaryHsl.l + (idle ? 0.04 : 0.16), idle ? 0.74 : 0.38, idle ? 0.9 : 0.68)
+  }), idle);
+}
+
+function describeMood(rgb: RGB, idle: boolean): string {
+  if (idle) return "Soft focus";
+
+  const luminance = getLuminance(rgb);
+  const saturation = getSaturation(rgb);
+
+  if (saturation > 0.54 && luminance < 0.3) return "Velvet neon";
+  if (saturation > 0.45 && luminance > 0.5) return "Sunlit pulse";
+  if (saturation < 0.24 && luminance > 0.48) return "Airy haze";
+  if (luminance < 0.22) return "After-hours";
+  return "Midnight glow";
+}
+
+function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean): AccentTheme {
+  const primary = normalizeAccent(primaryInput, idle);
+  let secondary = normalizeAccent(secondaryInput, idle);
+
+  if (getDistance(primary, secondary) < 72) {
+    secondary = deriveSecondaryAccent(primary, [secondaryInput], idle);
+  }
+
+  const blend = mixRgb(primary, secondary, 0.42);
+  const accentInk = getContrastRatio(blend, LIGHT_RGB) >= getContrastRatio(blend, DARK_RGB)
+    ? toHex(LIGHT_RGB)
+    : toHex(DARK_RGB);
+
+  return {
+    accent1: toHex(primary),
+    accent2: toHex(secondary),
+    glow: toRgba(mixRgb(primary, secondary, 0.28), idle ? 0.16 : 0.34),
+    surface: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.82 : 0.74), idle ? 0.24 : 0.4),
+    surfaceStrong: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.72 : 0.62), idle ? 0.36 : 0.56),
+    border: toRgba(mixRgb(blend, LIGHT_RGB, idle ? 0.42 : 0.22), idle ? 0.14 : 0.24),
+    textPrimary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.92), 0.98),
+    textSecondary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.74), idle ? 0.58 : 0.72),
+    accentInk,
+    shadow: toRgba(mixRgb(primary, DARK_RGB, 0.58), idle ? 0.18 : 0.38),
+    mood: describeMood(blend, idle)
+  };
+}
+
+function createThemeFromHex(accents: [string, string], idle: boolean): AccentTheme {
+  return buildAccentTheme(hexToRgb(accents[0]), hexToRgb(accents[1]), idle);
+}
+
+function getPaletteContext(): CanvasRenderingContext2D | null {
+  if (paletteContext) return paletteContext;
+  if (typeof document === "undefined") return null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = SAMPLE_SIZE;
+  canvas.height = SAMPLE_SIZE;
+  paletteContext = canvas.getContext("2d", { willReadFrequently: true });
+  return paletteContext;
+}
+
+function extractColours(src: string): Promise<[RGB, RGB]> {
+  const fallback: [RGB, RGB] = [
+    hexToRgb(LIVE_FALLBACK_ACCENT[0]),
+    hexToRgb(LIVE_FALLBACK_ACCENT[1])
+  ];
+
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.decoding = "async";
+
+    image.onload = () => {
+      const context = getPaletteContext();
+      if (!context) {
+        resolve(fallback);
+        return;
+      }
+
+      context.clearRect(0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
+      context.drawImage(image, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
+      const data = context.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE).data;
+
+      const buckets = new Map<string, { r: number; g: number; b: number; weight: number; hits: number }>();
+
+      for (let index = 0; index < data.length; index += 4) {
+        const alpha = data[index + 3] / 255;
+        if (alpha < 0.6) continue;
+
+        const pixel = {
+          r: data[index],
+          g: data[index + 1],
+          b: data[index + 2]
+        };
+
+        const brightness = (pixel.r + pixel.g + pixel.b) / 3;
+        const saturation = getSaturation(pixel);
+
+        if (brightness < 18 || brightness > 238) continue;
+        if (brightness > 215 && saturation < 0.12) continue;
+
+        const key = [
+          Math.round(pixel.r / 18) * 18,
+          Math.round(pixel.g / 18) * 18,
+          Math.round(pixel.b / 18) * 18
+        ].join(",");
+
+        const weight = 1 + saturation * 4 + Math.abs(brightness - 128) / 128 + alpha;
+        const bucket = buckets.get(key);
+
+        if (bucket) {
+          bucket.r += pixel.r;
+          bucket.g += pixel.g;
+          bucket.b += pixel.b;
+          bucket.weight += weight;
+          bucket.hits += 1;
+        } else {
+          buckets.set(key, {
+            r: pixel.r,
+            g: pixel.g,
+            b: pixel.b,
+            weight,
+            hits: 1
+          });
+        }
+      }
+
+      const ranked = [...buckets.values()]
+        .map((bucket) => ({
+          colour: {
+            r: bucket.r / bucket.hits,
+            g: bucket.g / bucket.hits,
+            b: bucket.b / bucket.hits
+          },
+          score: bucket.weight
+        }))
+        .sort((left, right) => right.score - left.score);
+
+      if (ranked.length === 0) {
+        resolve(fallback);
+        return;
+      }
+
+      const primary = ranked[0].colour;
+      const secondaryCandidate = ranked
+        .slice(1)
+        .map((entry) => {
+          const colour = entry.colour;
+          const colourHsl = rgbToHsl(colour);
+          const primaryHue = rgbToHsl(primary).h;
+          const hueDistance = getHueDistance(colourHsl.h, primaryHue) / 180;
+          const contrast = Math.abs(getLuminance(colour) - getLuminance(primary));
+          const warmth = Math.max(0, getWarmth(colour));
+
+          return {
+            colour,
+            score:
+              entry.score * 0.35 +
+              colourHsl.s * 3.1 +
+              hueDistance * 1.8 +
+              contrast * 2.2 +
+              warmth * 1.5 +
+              colourHsl.l * 0.9
+          };
+        })
+        .sort((left, right) => right.score - left.score)[0]?.colour;
+
+      const secondary = secondaryCandidate ?? deriveSecondaryAccent(primary, [], false);
+
+      resolve([primary, secondary]);
+    };
+
+    image.onerror = () => resolve(fallback);
+    image.src = src;
+  });
+}
+
+function getDeckCard(activeTab: AppTab, trackInfo: TrackInfo, idle: boolean, mood: string): DeckCard {
+  const artist = trackInfo.artist || trackInfo.album_artist || "Wayward";
+  const album = trackInfo.album_title || "Current session";
+  const title = trackInfo.title || "Waiting for playback";
+
+  switch (activeTab) {
+    case "Discover":
+      return {
+        eyebrow: idle ? "Discover" : "Based on now playing",
+        title: idle ? "Your next left turn starts here" : `More like ${title}`,
+        subtitle: idle ? "Start any song and the deck picks up its visual mood." : `${artist} · ${album}`,
+        badges: [mood, idle ? "Standby" : "Fresh match"],
+        note: idle
+          ? "Album art, gradients, and contrast shift in as soon as playback appears."
+          : "Recommendation cards now share the same ambient palette as the active record."
+      };
+    case "Similar albums":
+      return {
+        eyebrow: "Similar albums",
+        title: idle ? "Companion records will appear here" : album,
+        subtitle: idle ? "Visual tone and album cards stay in sync with the current session." : artist,
+        badges: [mood, idle ? "Album mood" : "Companion pick"],
+        note: idle
+          ? "The deck keeps a soft neutral theme until album art becomes available."
+          : "This panel inherits the live accent wash so related albums feel part of the same moment."
+      };
+    case "Queue":
+      return {
+        eyebrow: "Queue",
+        title: idle ? "Hold the atmosphere" : `Keep ${artist} nearby`,
+        subtitle: idle ? "Queued tracks will mirror the active palette once playback starts." : `${title} · next up`,
+        badges: [mood, idle ? "Ready" : "Queued next"],
+        note: idle
+          ? "Even the idle state keeps a readable frosted look with softer accent variables."
+          : "Queued suggestions now reuse the same contrast-safe tinting as the rest of the overlay."
+      };
+  }
+}
+
 function App() {
-  const [activeTab, setActiveTab] = useState("Discover");
+  const [activeTab, setActiveTab] = useState<AppTab>("Discover");
   const [trackInfo, setTrackInfo] = useState<TrackInfo>(NEUTRAL_TRACK);
-  const [accentColours, setAccentColours] = useState<[string, string]>(NEUTRAL_ACCENT);
+  const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => createThemeFromHex(NEUTRAL_ACCENT, true));
   const [showShortcuts, setShowShortcuts] = useState(false);
   const shortcutsAreaRef = useRef<HTMLDivElement>(null);
   const shortcutsRef = useRef<HTMLDivElement>(null);
-  const idleState = isNeutralTrack(trackInfo);
 
-  // Update CSS variables whenever accent colours change
+  const idleState = isNeutralTrack(trackInfo);
+  const deckCard = getDeckCard(activeTab, trackInfo, idleState, accentTheme.mood);
+
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty("--accent-c1", accentColours[0]);
-    root.style.setProperty("--accent-c2", accentColours[1]);
-    // Also derive glow
-    root.style.setProperty("--accent-glow", `${accentColours[0]}55`);
-  }, [accentColours]);
+    root.style.setProperty("--accent-c1", accentTheme.accent1);
+    root.style.setProperty("--accent-c2", accentTheme.accent2);
+    root.style.setProperty("--accent-glow", accentTheme.glow);
+    root.style.setProperty("--surface-tint", accentTheme.surface);
+    root.style.setProperty("--surface-strong", accentTheme.surfaceStrong);
+    root.style.setProperty("--surface-border", accentTheme.border);
+    root.style.setProperty("--accent-ink", accentTheme.accentInk);
+    root.style.setProperty("--accent-shadow", accentTheme.shadow);
+    root.style.setProperty("--text-primary", accentTheme.textPrimary);
+    root.style.setProperty("--text-secondary", accentTheme.textSecondary);
+  }, [accentTheme]);
 
-  // Re-extract colours whenever album art changes
   useEffect(() => {
+    let cancelled = false;
+    const fallback = idleState ? NEUTRAL_ACCENT : LIVE_FALLBACK_ACCENT;
+
+    const applyTheme = (primary: RGB, secondary: RGB) => {
+      if (!cancelled) {
+        setAccentTheme(buildAccentTheme(primary, secondary, idleState));
+      }
+    };
+
     if (trackInfo.album_art) {
-      extractColours(trackInfo.album_art).then(setAccentColours);
+      extractColours(trackInfo.album_art)
+        .then(([primary, secondary]) => applyTheme(primary, secondary))
+        .catch(() => applyTheme(hexToRgb(fallback[0]), hexToRgb(fallback[1])));
     } else {
-      setAccentColours(idleState ? NEUTRAL_ACCENT : ["#8b5cf6", "#ec4899"]);
+      applyTheme(hexToRgb(fallback[0]), hexToRgb(fallback[1]));
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [idleState, trackInfo.album_art]);
 
   const handlePlayPause = useCallback(async () => {
     try {
       await invoke("toggle_playback");
-    } catch (e) {
-      console.error("Failed to toggle playback:", e);
+    } catch (error) {
+      console.error("Failed to toggle playback:", error);
     }
   }, []);
 
   const handleSkipNext = useCallback(async () => {
     try {
       await invoke("skip_next");
-    } catch (e) {
-      console.error("Failed to skip next:", e);
+    } catch (error) {
+      console.error("Failed to skip next:", error);
     }
   }, []);
 
   const handleSkipPrevious = useCallback(async () => {
     try {
       await invoke("skip_previous");
-    } catch (e) {
-      console.error("Failed to skip previous:", e);
+    } catch (error) {
+      console.error("Failed to skip previous:", error);
     }
   }, []);
 
   useEffect(() => {
-    const handleKeyDown = async (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
         setShowShortcuts(false);
         await getCurrentWindow().hide();
       }
-      if (e.key === "ArrowLeft" || (e.ctrlKey && e.key === "+")) {
-        e.preventDefault();
+
+      if (event.key === "ArrowLeft" || (event.ctrlKey && event.key === "+")) {
+        event.preventDefault();
         handleSkipPrevious();
       }
-      if (e.key === "ArrowRight" || (e.ctrlKey && e.key === "-")) {
-        e.preventDefault();
+
+      if (event.key === "ArrowRight" || (event.ctrlKey && event.key === "-")) {
+        event.preventDefault();
         handleSkipNext();
       }
-      if (e.key === "Enter" || (e.ctrlKey && e.key === "]")) {
-        e.preventDefault();
+
+      if (event.key === "Enter" || (event.ctrlKey && event.key === "]")) {
+        event.preventDefault();
         console.log("Queue track");
       }
-      if (e.key === " " && !e.shiftKey && document.activeElement?.tagName !== "INPUT") {
-        e.preventDefault();
+
+      if (event.key === " " && !event.shiftKey && document.activeElement?.tagName !== "INPUT") {
+        event.preventDefault();
         handlePlayPause();
       }
-      // Tab switching shortcuts
-      if (e.key === "1") {
-        e.preventDefault();
+
+      if (event.key === "1") {
+        event.preventDefault();
         setActiveTab("Discover");
       }
-      if (e.key === "2") {
-        e.preventDefault();
+
+      if (event.key === "2") {
+        event.preventDefault();
         setActiveTab("Similar albums");
       }
-      if (e.key === "3") {
-        e.preventDefault();
+
+      if (event.key === "3") {
+        event.preventDefault();
         setActiveTab("Queue");
       }
     };
 
-    const handleClickOutside = (e: MouseEvent) => {
-      if (shortcutsAreaRef.current && !shortcutsAreaRef.current.contains(e.target as Node)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (shortcutsAreaRef.current && !shortcutsAreaRef.current.contains(event.target as Node)) {
         setShowShortcuts(false);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     document.addEventListener("mousedown", handleClickOutside);
+
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("mousedown", handleClickOutside);
@@ -198,42 +646,44 @@ function App() {
 
   useEffect(() => {
     const unlisten = listen<TrackInfo>("smtc-update", (event) => {
-      setTrackInfo((prev) => {
+      setTrackInfo((previous) => {
         const next = event.payload;
+
         if (
           !isNeutralTrack(next) &&
           !next.album_art &&
-          prev.album_art &&
-          next.title === prev.title &&
-          next.artist === prev.artist &&
-          next.album_title === prev.album_title
+          previous.album_art &&
+          next.title === previous.title &&
+          next.artist === previous.artist &&
+          next.album_title === previous.album_title
         ) {
-          return { ...next, album_art: prev.album_art };
+          return { ...next, album_art: previous.album_art };
         }
+
         return next;
       });
     });
 
     return () => {
-      unlisten.then((f) => f());
+      unlisten.then((dispose) => dispose());
     };
   }, []);
 
   const progressPercent = trackInfo.duration > 0
     ? (trackInfo.position / trackInfo.duration) * 100
     : 0;
+
   const trackTitle = idleState ? "Nothing playing" : trackInfo.title;
   const trackSubtitle = idleState
     ? "Waiting for a system media session"
     : [trackInfo.artist || "Unknown artist", trackInfo.album_title].filter(Boolean).join(" · ");
   const statusLabel = idleState ? "Ready" : trackInfo.status;
+  const tabClassName = activeTab.toLowerCase().replace(/\s+/g, "-");
 
   return (
     <div className={`container ${idleState ? "is-idle" : ""}`}>
-      {/* Dynamic ambient gradient background reacts to album art colours */}
       <div className="ambient-gradient" aria-hidden="true" />
 
-      {/* Search Header */}
       <div className="search-section">
         <div className="search-header">
           <div className="search-input-wrapper">
@@ -252,7 +702,7 @@ function App() {
               type="button"
               aria-expanded={showShortcuts}
               aria-haspopup="dialog"
-              onClick={() => setShowShortcuts((prev) => !prev)}
+              onClick={() => setShowShortcuts((previous) => !previous)}
             >
               <Settings size={18} />
             </button>
@@ -264,8 +714,8 @@ function App() {
                   <button
                     className="close-shortcuts"
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={(event) => {
+                      event.stopPropagation();
                       setShowShortcuts(false);
                     }}
                   >
@@ -314,7 +764,6 @@ function App() {
         </div>
       </div>
 
-      {/* Main Content Area */}
       <div className="main-content">
         <div className="now-playing-card">
           <div className="album-art">
@@ -335,6 +784,7 @@ function App() {
             <div className="track-meta">
               <div className="badges">
                 <span className={`badge active ${idleState ? "idle" : ""}`}>{statusLabel}</span>
+                <span className="badge mood">{accentTheme.mood}</span>
               </div>
               <div className="progress-bar-container">
                 <span>{formatTime(trackInfo.position)}</span>
@@ -346,23 +796,22 @@ function App() {
             </div>
           </div>
           <div className="playback-controls">
-            <button className="playback-control-btn" onClick={handleSkipPrevious}>
+            <button className="playback-control-btn" onClick={handleSkipPrevious} type="button">
               <SkipBack size={18} fill="currentColor" />
             </button>
-            <button className="play-pause-btn" onClick={handlePlayPause}>
+            <button className="play-pause-btn" onClick={handlePlayPause} type="button">
               {trackInfo.status === "Playing"
                 ? <Pause size={22} fill="currentColor" />
                 : <Play size={22} fill="currentColor" />}
             </button>
-            <button className="playback-control-btn" onClick={handleSkipNext}>
+            <button className="playback-control-btn" onClick={handleSkipNext} type="button">
               <SkipForward size={18} fill="currentColor" />
             </button>
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="tabs">
-          {["Discover", "Similar albums", "Queue"].map((tab) => (
+          {APP_TABS.map((tab) => (
             <div
               key={tab}
               className={`tab ${activeTab === tab ? "active" : ""}`}
@@ -373,27 +822,41 @@ function App() {
           ))}
         </div>
 
-        {/* Swipe Deck Area */}
         <div className="deck-container">
           <div className="swipe-card-area">
-            <div className="swipe-card">
-              <div className="album-art album-art-large" />
+            <div key={activeTab} className={`swipe-card ${tabClassName}`}>
+              <div className="album-art album-art-large">
+                {trackInfo.album_art ? (
+                  <img
+                    key={`${activeTab}-${trackInfo.album_art}`}
+                    src={trackInfo.album_art}
+                    alt=""
+                    className="album-art-inner album-art-image"
+                  />
+                ) : (
+                  <div className="album-art-inner" />
+                )}
+              </div>
               <div className="swipe-card-content">
-                <h3 className="swipe-card-title">King and Lionheart</h3>
-                <p className="swipe-card-artist">Of Monsters and Men &middot; My Head Is an Animal</p>
+                <span className="swipe-card-eyebrow">{deckCard.eyebrow}</span>
+                <h3 className="swipe-card-title">{deckCard.title}</h3>
+                <p className="swipe-card-artist">{deckCard.subtitle}</p>
                 <div className="badges">
-                  <span className="badge">Synth-pop</span>
-                  <span className="badge">2020</span>
+                  {deckCard.badges.map((badge, index) => (
+                    <span key={`${activeTab}-${badge}`} className={`badge ${index === 0 ? "mood" : ""}`}>
+                      {badge}
+                    </span>
+                  ))}
                 </div>
+                <p className="swipe-card-note">{deckCard.note}</p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Footer */}
       <div className="footer">
-        <div>Alt+Space to open</div>
+        <div>Ctrl+Space to open</div>
         <div className="footer-icon">
           <PlusCircle size={14} /> Apple Music
         </div>

@@ -79,7 +79,7 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let ctrl_space = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+    let ctrl_space = Shortcut::new(Some(Modifiers::CONTROL), Code::Space);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new()
