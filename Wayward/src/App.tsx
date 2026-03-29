@@ -167,6 +167,19 @@ function App() {
         e.preventDefault();
         handlePlayPause();
       }
+      // Tab switching shortcuts
+      if (e.key === "1") {
+        e.preventDefault();
+        setActiveTab("Discover");
+      }
+      if (e.key === "2") {
+        e.preventDefault();
+        setActiveTab("Similar albums");
+      }
+      if (e.key === "3") {
+        e.preventDefault();
+        setActiveTab("Queue");
+      }
     };
 
     const handleClickOutside = (e: MouseEvent) => {
@@ -282,6 +295,18 @@ function App() {
                 <div className="shortcut-item">
                   <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>]</kbd></div>
                   <span>Queue track</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>1</kbd></div>
+                  <span>Discover</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>2</kbd></div>
+                  <span>Similar albums</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>3</kbd></div>
+                  <span>Queue</span>
                 </div>
               </div>
             </div>
