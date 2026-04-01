@@ -25,6 +25,37 @@ interface TrackInfo {
   album_art: string | null;
 }
 
+interface LastfmSource {
+  url: string | null;
+  listeners: string | null;
+  playcount: string | null;
+  tags: string[];
+}
+
+interface LastfmTrackMatch {
+  name: string;
+  artist: string;
+  album: string | null;
+  image_url: string | null;
+  url: string | null;
+  match_score: number | null;
+}
+
+interface LastfmAlbumMatch {
+  name: string;
+  artist: string;
+  image_url: string | null;
+  url: string | null;
+  listeners: string | null;
+  rank: number | null;
+}
+
+interface LastfmContext {
+  source: LastfmSource;
+  similar_tracks: LastfmTrackMatch[];
+  top_albums: LastfmAlbumMatch[];
+}
+
 interface RGB {
   r: number;
   g: number;
@@ -57,6 +88,14 @@ interface DeckCard {
   subtitle: string;
   badges: string[];
   note: string;
+  imageSrc: string | null;
+  extraItems: string[];
+}
+
+interface NormalizedTrackMetadata {
+  lookupArtist: string;
+  displayArtist: string;
+  displayAlbum: string;
 }
 
 const APP_TABS = ["Discover", "Similar albums", "Queue"] as const;
@@ -475,42 +514,215 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
   });
 }
 
-function getDeckCard(activeTab: AppTab, trackInfo: TrackInfo, idle: boolean, mood: string): DeckCard {
-  const artist = trackInfo.artist || trackInfo.album_artist || "Wayward";
-  const album = trackInfo.album_title || "Current session";
-  const title = trackInfo.title || "Waiting for playback";
+function normalizeTrackMetadata(trackInfo: TrackInfo): NormalizedTrackMetadata {
+  const rawArtist = trackInfo.artist.trim();
+  const rawAlbumArtist = trackInfo.album_artist.trim();
+  const rawAlbumTitle = trackInfo.album_title.trim();
+  const splitArtistCandidate = (value: string) => {
+    const splitMatch = value.match(/^(.+?)\s(?:\u2014|\u2013)\s(.+)$/);
+    return {
+      artist: splitMatch?.[1]?.trim() ?? value,
+      album: splitMatch?.[2]?.trim() ?? ""
+    };
+  };
+
+  const artistCandidate = splitArtistCandidate(rawArtist);
+  const albumArtistCandidate = splitArtistCandidate(rawAlbumArtist);
+  const preferredArtistCandidate = albumArtistCandidate.artist || artistCandidate.artist;
+  const preferredAlbumCandidate = rawAlbumTitle || albumArtistCandidate.album || artistCandidate.album;
+
+  return {
+    lookupArtist: preferredArtistCandidate,
+    displayArtist: preferredArtistCandidate,
+    displayAlbum: preferredAlbumCandidate
+  };
+}
+
+function buildLookupKey(trackInfo: TrackInfo, normalizedTrack: NormalizedTrackMetadata): string {
+  return [trackInfo.title, normalizedTrack.lookupArtist, normalizedTrack.displayAlbum]
+    .map((value) => value.trim().toLowerCase())
+    .join("\u241f");
+}
+
+function formatMetric(value: string | null | undefined, label: string): string | null {
+  if (!value) return null;
+  const normalized = Number.parseInt(value.replace(/[^\d]/g, ""), 10);
+  if (!Number.isFinite(normalized)) return null;
+
+  return `${new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 1
+  }).format(normalized)} ${label}`;
+}
+
+function buildDiscoverCard(
+  trackInfo: TrackInfo,
+  normalizedTrack: NormalizedTrackMetadata,
+  context: LastfmContext | null,
+  mood: string,
+  status: "idle" | "loading" | "ready" | "error",
+  errorMessage: string | null
+): DeckCard {
+  if (status === "loading") {
+    return {
+      eyebrow: "Discover",
+      title: "Finding a nearby left turn",
+      subtitle: `${normalizedTrack.displayArtist} / ${trackInfo.title}`,
+      badges: ["Last.fm", "Scanning"],
+      note: "Pulling similar tracks and tags from Last.fm for the current song.",
+      imageSrc: trackInfo.album_art,
+      extraItems: []
+    };
+  }
+
+  if (status === "error") {
+    return {
+      eyebrow: "Discover",
+      title: "No Last.fm match yet",
+      subtitle: `${normalizedTrack.displayArtist} / ${trackInfo.title}`,
+      badges: ["Last.fm", mood],
+      note: errorMessage ?? "Last.fm could not map this track right now.",
+      imageSrc: trackInfo.album_art,
+      extraItems: []
+    };
+  }
+
+  const primaryMatch = context?.similar_tracks[0];
+  if (!primaryMatch) {
+    return {
+      eyebrow: "Discover",
+      title: "No similar tracks surfaced",
+      subtitle: `${normalizedTrack.displayArtist} / ${trackInfo.title}`,
+      badges: ["Last.fm", mood],
+      note: "Try another track. Last.fm did not return similar songs for this one.",
+      imageSrc: trackInfo.album_art,
+      extraItems: []
+    };
+  }
+
+  const metrics = [
+    formatMetric(context?.source.listeners, "listeners"),
+    formatMetric(context?.source.playcount, "plays")
+  ].filter(Boolean) as string[];
+  const badges = context?.source.tags?.slice(0, 2) ?? [];
+
+  return {
+    eyebrow: "Discover",
+    title: primaryMatch.name,
+    subtitle: [primaryMatch.artist, primaryMatch.album].filter(Boolean).join(" / "),
+    badges: badges.length > 0 ? badges : ["Last.fm", mood],
+    note: metrics.length > 0
+      ? `Seeded from ${trackInfo.title}. ${metrics.join(" / ")} on Last.fm.`
+      : `Closest track match Last.fm found for ${trackInfo.title}.`,
+    imageSrc: primaryMatch.image_url ?? trackInfo.album_art,
+    extraItems: context?.similar_tracks.slice(1, 4).map((item) => item.name) ?? []
+  };
+}
+
+function buildAlbumsCard(
+  trackInfo: TrackInfo,
+  normalizedTrack: NormalizedTrackMetadata,
+  context: LastfmContext | null,
+  mood: string,
+  status: "idle" | "loading" | "ready" | "error",
+  errorMessage: string | null
+): DeckCard {
+  if (status === "loading") {
+    return {
+      eyebrow: "Similar albums",
+      title: "Mapping the artist lane",
+      subtitle: normalizedTrack.displayArtist,
+      badges: ["Last.fm", "Albums"],
+      note: "Looking up the strongest album picks around the current artist.",
+      imageSrc: trackInfo.album_art,
+      extraItems: []
+    };
+  }
+
+  if (status === "error") {
+    return {
+      eyebrow: "Similar albums",
+      title: "Album lane unavailable",
+      subtitle: normalizedTrack.displayArtist,
+      badges: ["Last.fm", mood],
+      note: errorMessage ?? "Last.fm could not return album context for this artist.",
+      imageSrc: trackInfo.album_art,
+      extraItems: []
+    };
+  }
+
+  const albumPick = context?.top_albums[0];
+  if (!albumPick) {
+    return {
+      eyebrow: "Similar albums",
+      title: "No album picks surfaced",
+      subtitle: normalizedTrack.displayArtist,
+      badges: ["Last.fm", mood],
+      note: "Last.fm did not return additional album context for this artist.",
+      imageSrc: trackInfo.album_art,
+      extraItems: []
+    };
+  }
+
+  const albumBadge = albumPick.rank ? `Top ${albumPick.rank}` : "Album pick";
+  const listeners = formatMetric(albumPick.listeners, "plays");
+
+  return {
+    eyebrow: "Similar albums",
+    title: albumPick.name,
+    subtitle: albumPick.artist,
+    badges: [albumBadge, ...(listeners ? [listeners] : [mood])],
+    note: "Using Last.fm artist album data while queue integrations stay parked for now.",
+    imageSrc: albumPick.image_url ?? trackInfo.album_art,
+    extraItems: context?.top_albums.slice(1, 4).map((item) => item.name) ?? []
+  };
+}
+
+function buildQueueCard(trackInfo: TrackInfo, normalizedTrack: NormalizedTrackMetadata, mood: string): DeckCard {
+  return {
+    eyebrow: "Queue",
+    title: "Queue is parked for now",
+    subtitle: trackInfo.title
+      ? `${normalizedTrack.displayArtist} / ${trackInfo.title}`
+      : "Waiting for player integrations",
+    badges: ["Unused", mood],
+    note: "We are not wiring Apple Music or Spotify yet, so this tab stays informational only.",
+    imageSrc: trackInfo.album_art,
+    extraItems: []
+  };
+}
+
+function getDeckCard(
+  activeTab: AppTab,
+  trackInfo: TrackInfo,
+  normalizedTrack: NormalizedTrackMetadata,
+  context: LastfmContext | null,
+  idle: boolean,
+  mood: string,
+  status: "idle" | "loading" | "ready" | "error",
+  errorMessage: string | null
+): DeckCard {
+  if (idle) {
+    return {
+      eyebrow: activeTab,
+      title: activeTab === "Queue"
+        ? "Queue is parked until integrations land"
+        : "Start any track to wake Last.fm",
+      subtitle: "Wayward will enrich the overlay from the current SMTC session.",
+      badges: [mood, "Standby"],
+      note: "Once playback starts, Wayward will fetch similar tracks and artist album context from Last.fm.",
+      imageSrc: null,
+      extraItems: []
+    };
+  }
 
   switch (activeTab) {
     case "Discover":
-      return {
-        eyebrow: idle ? "Discover" : "Based on now playing",
-        title: idle ? "Your next left turn starts here" : `More like ${title}`,
-        subtitle: idle ? "Start any song and the deck picks up its visual mood." : `${artist} · ${album}`,
-        badges: [mood, idle ? "Standby" : "Fresh match"],
-        note: idle
-          ? "Album art, gradients, and contrast shift in as soon as playback appears."
-          : "Recommendation cards now share the same ambient palette as the active record."
-      };
+      return buildDiscoverCard(trackInfo, normalizedTrack, context, mood, status, errorMessage);
     case "Similar albums":
-      return {
-        eyebrow: "Similar albums",
-        title: idle ? "Companion records will appear here" : album,
-        subtitle: idle ? "Visual tone and album cards stay in sync with the current session." : artist,
-        badges: [mood, idle ? "Album mood" : "Companion pick"],
-        note: idle
-          ? "The deck keeps a soft neutral theme until album art becomes available."
-          : "This panel inherits the live accent wash so related albums feel part of the same moment."
-      };
+      return buildAlbumsCard(trackInfo, normalizedTrack, context, mood, status, errorMessage);
     case "Queue":
-      return {
-        eyebrow: "Queue",
-        title: idle ? "Hold the atmosphere" : `Keep ${artist} nearby`,
-        subtitle: idle ? "Queued tracks will mirror the active palette once playback starts." : `${title} · next up`,
-        badges: [mood, idle ? "Ready" : "Queued next"],
-        note: idle
-          ? "Even the idle state keeps a readable frosted look with softer accent variables."
-          : "Queued suggestions now reuse the same contrast-safe tinting as the rest of the overlay."
-      };
+      return buildQueueCard(trackInfo, normalizedTrack, mood);
   }
 }
 
@@ -518,12 +730,26 @@ function App() {
   const [activeTab, setActiveTab] = useState<AppTab>("Discover");
   const [trackInfo, setTrackInfo] = useState<TrackInfo>(NEUTRAL_TRACK);
   const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => createThemeFromHex(NEUTRAL_ACCENT, true));
+  const [lastfmContext, setLastfmContext] = useState<LastfmContext | null>(null);
+  const [lastfmStatus, setLastfmStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [lastfmError, setLastfmError] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const shortcutsAreaRef = useRef<HTMLDivElement>(null);
   const shortcutsRef = useRef<HTMLDivElement>(null);
+  const lastfmCacheRef = useRef<Map<string, LastfmContext>>(new Map());
 
   const idleState = isNeutralTrack(trackInfo);
-  const deckCard = getDeckCard(activeTab, trackInfo, idleState, accentTheme.mood);
+  const normalizedTrack = normalizeTrackMetadata(trackInfo);
+  const deckCard = getDeckCard(
+    activeTab,
+    trackInfo,
+    normalizedTrack,
+    lastfmContext,
+    idleState,
+    accentTheme.mood,
+    lastfmStatus,
+    lastfmError
+  );
 
   useEffect(() => {
     const root = document.documentElement;
@@ -561,6 +787,51 @@ function App() {
       cancelled = true;
     };
   }, [idleState, trackInfo.album_art]);
+
+  useEffect(() => {
+    const lookupKey = buildLookupKey(trackInfo, normalizedTrack);
+
+    if (idleState || !trackInfo.title.trim() || !normalizedTrack.lookupArtist.trim()) {
+      setLastfmContext(null);
+      setLastfmStatus("idle");
+      setLastfmError(null);
+      return;
+    }
+
+    const cached = lastfmCacheRef.current.get(lookupKey);
+    if (cached) {
+      setLastfmContext(cached);
+      setLastfmStatus("ready");
+      setLastfmError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLastfmStatus("loading");
+    setLastfmError(null);
+
+    invoke<LastfmContext>("lookup_lastfm_context", {
+      artist: normalizedTrack.lookupArtist,
+      track: trackInfo.title,
+      albumTitle: normalizedTrack.displayAlbum || null
+    })
+      .then((result) => {
+        if (cancelled) return;
+        lastfmCacheRef.current.set(lookupKey, result);
+        setLastfmContext(result);
+        setLastfmStatus("ready");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setLastfmContext(null);
+        setLastfmStatus("error");
+        setLastfmError(error instanceof Error ? error.message : String(error));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [idleState, normalizedTrack.displayAlbum, normalizedTrack.lookupArtist, trackInfo.title]);
 
   const handlePlayPause = useCallback(async () => {
     try {
@@ -676,7 +947,7 @@ function App() {
   const trackTitle = idleState ? "Nothing playing" : trackInfo.title;
   const trackSubtitle = idleState
     ? "Waiting for a system media session"
-    : [trackInfo.artist || "Unknown artist", trackInfo.album_title].filter(Boolean).join(" · ");
+    : [normalizedTrack.displayArtist || "Unknown artist", normalizedTrack.displayAlbum].filter(Boolean).join(" / ");
   const statusLabel = idleState ? "Ready" : trackInfo.status;
   const tabClassName = activeTab.toLowerCase().replace(/\s+/g, "-");
 
@@ -826,10 +1097,10 @@ function App() {
           <div className="swipe-card-area">
             <div key={activeTab} className={`swipe-card ${tabClassName}`}>
               <div className="album-art album-art-large">
-                {trackInfo.album_art ? (
+                {deckCard.imageSrc ? (
                   <img
-                    key={`${activeTab}-${trackInfo.album_art}`}
-                    src={trackInfo.album_art}
+                    key={`${activeTab}-${deckCard.imageSrc}`}
+                    src={deckCard.imageSrc}
                     alt=""
                     className="album-art-inner album-art-image"
                   />
@@ -849,6 +1120,15 @@ function App() {
                   ))}
                 </div>
                 <p className="swipe-card-note">{deckCard.note}</p>
+                {deckCard.extraItems.length > 0 && (
+                  <div className="swipe-card-extras">
+                    {deckCard.extraItems.map((item) => (
+                      <span key={`${activeTab}-${item}`} className="swipe-card-extra-chip">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -858,7 +1138,7 @@ function App() {
       <div className="footer">
         <div>Ctrl+Space to open</div>
         <div className="footer-icon">
-          <PlusCircle size={14} /> Apple Music
+          <PlusCircle size={14} /> Last.fm live data
         </div>
       </div>
     </div>
