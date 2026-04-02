@@ -371,14 +371,14 @@ function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean)
   return {
     accent1: toHex(primary),
     accent2: toHex(secondary),
-    glow: toRgba(mixRgb(primary, secondary, 0.28), idle ? 0.16 : 0.34),
-    surface: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.82 : 0.74), idle ? 0.24 : 0.4),
-    surfaceStrong: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.72 : 0.62), idle ? 0.36 : 0.56),
-    border: toRgba(mixRgb(blend, LIGHT_RGB, idle ? 0.42 : 0.22), idle ? 0.14 : 0.24),
+    glow: toRgba(mixRgb(primary, secondary, 0.28), idle ? 0.24 : 0.42),
+    surface: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.82 : 0.74), idle ? 0.35 : 0.55),
+    surfaceStrong: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.72 : 0.62), idle ? 0.45 : 0.65),
+    border: toRgba(mixRgb(blend, LIGHT_RGB, idle ? 0.42 : 0.22), idle ? 0.25 : 0.35),
     textPrimary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.92), 0.98),
-    textSecondary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.74), idle ? 0.58 : 0.72),
+    textSecondary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.74), idle ? 0.65 : 0.82),
     accentInk,
-    shadow: toRgba(mixRgb(primary, DARK_RGB, 0.58), idle ? 0.18 : 0.38),
+    shadow: toRgba(mixRgb(primary, DARK_RGB, 0.58), idle ? 0.35 : 0.55),
     mood: describeMood(blend, idle)
   };
 }
@@ -953,7 +953,15 @@ function App() {
 
   return (
     <div className={`container ${idleState ? "is-idle" : ""}`}>
-      <div className="ambient-gradient" aria-hidden="true" />
+      <div className="ambient-background" aria-hidden="true">
+        <div className="ambient-gradient">
+          <div className="ambient-blob ambient-blob-1" />
+          <div className="ambient-blob ambient-blob-2" />
+          <div className="ambient-blob ambient-blob-3" />
+          <div className="ambient-blob ambient-blob-4" />
+        </div>
+        <div className="noise-overlay" />
+      </div>
 
       <div className="search-section">
         <div className="search-header">
