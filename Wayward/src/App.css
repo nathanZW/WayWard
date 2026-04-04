@@ -66,7 +66,8 @@
 
 .ambient-background {
   position: absolute;
-  inset: -8%;
+  /* Oversized so drift reveals different gradient regions as it moves. */
+  inset: -40%;
   z-index: 0;
   pointer-events: none;
   border-radius: 20px;
@@ -100,16 +101,16 @@
     transform: translate(0, 0) scale(1);
   }
   25% {
-    transform: translate(2%, -1.5%) scale(1.02);
+    transform: translate(12%, -8%) scale(1.04);
   }
   50% {
-    transform: translate(-1.5%, 2%) scale(1.01);
+    transform: translate(-10%, 14%) scale(1.02);
   }
   75% {
-    transform: translate(1%, 1%) scale(1.03);
+    transform: translate(8%, 6%) scale(1.06);
   }
   100% {
-    transform: translate(-2%, -1%) scale(1.02);
+    transform: translate(-14%, -10%) scale(1.03);
   }
 }
 
