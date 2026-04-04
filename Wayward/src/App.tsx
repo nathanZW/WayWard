@@ -9,6 +9,7 @@ import {
   SkipForward,
   X
 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -103,6 +104,7 @@ interface NormalizedTrackMetadata {
 const APP_TABS = ["Discover", "Similar albums", "Queue"] as const;
 type AppTab = typeof APP_TABS[number];
 type LaneTab = Extract<AppTab, "Discover" | "Similar albums">;
+type LaneCardRole = "left" | "center" | "right";
 type LaneMotionDirection = "forward" | "backward";
 
 const NEUTRAL_TRACK: TrackInfo = {
@@ -813,19 +815,77 @@ function isEditableElement(element: Element | null): boolean {
       || element.isContentEditable);
 }
 
-function renderSwipeCard(card: DeckCard, tabClassName: string, variant: "center" | "left" | "right") {
-  const isPreview = variant !== "center";
+function getVisibleLaneCards(
+  leftCard: DeckCard | null,
+  centerCard: DeckCard,
+  rightCard: DeckCard | null
+): Array<{ card: DeckCard; role: LaneCardRole }> {
+  return [
+    leftCard ? { card: leftCard, role: "left" as const } : null,
+    { card: centerCard, role: "center" as const },
+    rightCard ? { card: rightCard, role: "right" as const } : null
+  ].filter(Boolean) as Array<{ card: DeckCard; role: LaneCardRole }>;
+}
+
+function renderSwipeCard(
+  entry: { card: DeckCard; role: LaneCardRole },
+  tabClassName: string,
+  motionDirection: LaneMotionDirection | null
+) {
+  const { card, role } = entry;
+  const isPreview = role !== "center";
+  const enterOffset = motionDirection === "forward" ? 42 : -42;
+  const exitOffset = motionDirection === "forward" ? -42 : 42;
 
   return (
-    <div
-      key={`${variant}-${card.key}`}
-      className={`swipe-card ${tabClassName} ${variant} ${isPreview ? "preview" : "center"}`}
+    <motion.div
+      layout
+      key={card.key}
+      className={`swipe-card ${tabClassName} ${role} ${isPreview ? "preview" : "center"}`}
       aria-hidden={isPreview}
+      initial={motionDirection
+        ? {
+          opacity: 0,
+          x: role === "center" ? enterOffset : enterOffset * 0.6,
+          scale: role === "center" ? 0.985 : 0.86
+        }
+        : false}
+      animate={{
+        opacity: 1,
+        x: 0,
+        scale: 1
+      }}
+      exit={{
+        opacity: 0,
+        x: exitOffset,
+        scale: 0.86,
+        transition: {
+          duration: 0.18,
+          ease: [0.4, 0, 1, 1]
+        }
+      }}
+      transition={{
+        layout: {
+          duration: 0.28,
+          ease: [0.22, 1, 0.36, 1]
+        },
+        opacity: {
+          duration: 0.2,
+          ease: [0.22, 1, 0.36, 1]
+        },
+        x: {
+          duration: 0.24,
+          ease: [0.22, 1, 0.36, 1]
+        },
+        scale: {
+          duration: 0.24,
+          ease: [0.22, 1, 0.36, 1]
+        }
+      }}
     >
       <div className="album-art album-art-large">
         {card.imageSrc ? (
           <img
-            key={`${variant}-${card.imageSrc}`}
             src={card.imageSrc}
             alt=""
             className="album-art-inner album-art-image"
@@ -847,7 +907,7 @@ function renderSwipeCard(card: DeckCard, tabClassName: string, variant: "center"
         </div>
         <p className="swipe-card-note">{card.note}</p>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -914,9 +974,10 @@ function App() {
     ? activeCards[activeIndex + 1]
     : null;
   const stackedLaneEnabled = activeTab !== "Queue" && activeCards.length > 1;
-  const laneMotionClass = laneMotion && laneMotion.tab === activeTab
-    ? `lane-animating lane-${laneMotion.direction}`
-    : "";
+  const laneMotionDirection = laneMotion && laneMotion.tab === activeTab
+    ? laneMotion.direction
+    : null;
+  const visibleLaneCards = getVisibleLaneCards(leftPreviewCard, centerCard, rightPreviewCard);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -1350,12 +1411,10 @@ function App() {
 
         <div className="deck-container">
           <div className={`swipe-card-area ${stackedLaneEnabled ? "stacked" : "single"}`}>
-            <div className={`swipe-card-stack ${stackedLaneEnabled ? "stacked" : "single"} ${laneMotionClass}`.trim()}>
-              {leftPreviewCard && renderSwipeCard(leftPreviewCard, tabClassName, "left")}
-              {rightPreviewCard && renderSwipeCard(rightPreviewCard, tabClassName, "right")}
-              <div key={`${activeTab}-${centerCard.key}`} className="swipe-card-center">
-                {renderSwipeCard(centerCard, tabClassName, "center")}
-              </div>
+            <div className={`swipe-card-stack ${stackedLaneEnabled ? "stacked" : "single"}`}>
+              <AnimatePresence initial={false} mode="popLayout">
+                {visibleLaneCards.map((entry) => renderSwipeCard(entry, tabClassName, laneMotionDirection))}
+              </AnimatePresence>
             </div>
           </div>
         </div>

@@ -606,10 +606,13 @@
     0 0 0 1px rgba(255, 255, 255, 0.05) inset;
   overflow: hidden;
   isolation: isolate;
-  animation: deckCardIn 260ms ease;
   transition:
     transform 220ms ease,
     opacity 220ms ease,
+    width 260ms ease,
+    min-height 260ms ease,
+    max-height 260ms ease,
+    padding 260ms ease,
     box-shadow 220ms ease,
     border-color 220ms ease,
     background 220ms ease;
@@ -685,30 +688,6 @@
 .swipe-card.preview .swipe-card-note,
 .swipe-card.preview .badges {
   display: none;
-}
-
-.swipe-card-stack.lane-forward .swipe-card.center {
-  animation: laneCenterFromRight 240ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.swipe-card-stack.lane-backward .swipe-card.center {
-  animation: laneCenterFromLeft 240ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.swipe-card-stack.lane-forward .swipe-card.left.preview {
-  animation: lanePreviewToLeft 240ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.swipe-card-stack.lane-forward .swipe-card.right.preview {
-  animation: lanePreviewFromRight 240ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.swipe-card-stack.lane-backward .swipe-card.left.preview {
-  animation: lanePreviewFromLeft 240ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.swipe-card-stack.lane-backward .swipe-card.right.preview {
-  animation: lanePreviewToRight 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Inner accent glow — lightweight gradient overlay (no filter/blur). */
@@ -819,96 +798,10 @@
   }
 }
 
-@keyframes deckCardIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes laneCenterFromRight {
-  from {
-    opacity: 0.52;
-    transform: translateX(32px) scale(0.975);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-}
-
-@keyframes laneCenterFromLeft {
-  from {
-    opacity: 0.52;
-    transform: translateX(-32px) scale(0.975);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-}
-
-@keyframes lanePreviewToLeft {
-  from {
-    opacity: 0.68;
-    transform: translateX(54px) scale(0.96);
-  }
-  to {
-    opacity: 0.4;
-    transform: translateX(0) scale(0.9);
-  }
-}
-
-@keyframes lanePreviewToRight {
-  from {
-    opacity: 0.68;
-    transform: translateX(-54px) scale(0.96);
-  }
-  to {
-    opacity: 0.4;
-    transform: translateX(0) scale(0.9);
-  }
-}
-
-@keyframes lanePreviewFromRight {
-  from {
-    opacity: 0;
-    transform: translateX(24px) scale(0.86);
-  }
-  to {
-    opacity: 0.4;
-    transform: translateX(0) scale(0.9);
-  }
-}
-
-@keyframes lanePreviewFromLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-24px) scale(0.86);
-  }
-  to {
-    opacity: 0.4;
-    transform: translateX(0) scale(0.9);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .ambient-background,
   .swipe-card,
   .album-art-image {
-    animation: none;
-  }
-
-  .swipe-card-stack.lane-forward .swipe-card.center,
-  .swipe-card-stack.lane-backward .swipe-card.center,
-  .swipe-card-stack.lane-forward .swipe-card.left.preview,
-  .swipe-card-stack.lane-forward .swipe-card.right.preview,
-  .swipe-card-stack.lane-backward .swipe-card.left.preview,
-  .swipe-card-stack.lane-backward .swipe-card.right.preview {
     animation: none;
   }
 }
