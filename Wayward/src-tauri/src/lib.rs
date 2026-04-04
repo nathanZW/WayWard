@@ -1,5 +1,5 @@
 mod smtc;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri::command;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -89,9 +89,11 @@ pub fn run() {
                         let is_visible = window.is_visible().unwrap_or(false);
                         if is_visible {
                             let _ = window.hide();
+                            let _ = app.emit("window-visibility", false);
                         } else {
                             let _ = window.show();
                             let _ = window.set_focus();
+                            let _ = app.emit("window-visibility", true);
                             let app_handle = app.clone();
                             tauri::async_runtime::spawn(async move {
                                 smtc::emit_current_state(&app_handle).await;
@@ -110,7 +112,7 @@ pub fn run() {
             let window = app.get_webview_window("main").unwrap();
 
             #[cfg(target_os = "windows")]
-            let _ = apply_acrylic(&window, Some((18, 18, 20, 230)));
+            let _ = apply_acrylic(&window, Some((18, 18, 20, 180)));
 
             smtc::start_smtc_listener(app.handle().clone());
             Ok(())

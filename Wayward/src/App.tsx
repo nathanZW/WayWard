@@ -12,6 +12,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import AmbientBackground from "./components/AmbientBackground";
 import "./App.css";
 
 interface TrackInfo {
@@ -734,6 +735,7 @@ function App() {
   const [lastfmStatus, setLastfmStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [lastfmError, setLastfmError] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [windowVisible, setWindowVisible] = useState(true);
   const shortcutsAreaRef = useRef<HTMLDivElement>(null);
   const shortcutsRef = useRef<HTMLDivElement>(null);
   const lastfmCacheRef = useRef<Map<string, LastfmContext>>(new Map());
@@ -861,6 +863,7 @@ function App() {
     const handleKeyDown = async (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setShowShortcuts(false);
+        setWindowVisible(false);
         await getCurrentWindow().hide();
       }
 
@@ -940,6 +943,18 @@ function App() {
     };
   }, []);
 
+  // Track window visibility so we can halt all GPU-intensive rendering
+  // (animations, compositing) when the overlay is hidden.
+  useEffect(() => {
+    const unlisten = listen<boolean>("window-visibility", (event) => {
+      setWindowVisible(event.payload);
+    });
+
+    return () => {
+      unlisten.then((dispose) => dispose());
+    };
+  }, []);
+
   const progressPercent = trackInfo.duration > 0
     ? (trackInfo.position / trackInfo.duration) * 100
     : 0;
@@ -952,16 +967,13 @@ function App() {
   const tabClassName = activeTab.toLowerCase().replace(/\s+/g, "-");
 
   return (
-    <div className={`container ${idleState ? "is-idle" : ""}`}>
-      <div className="ambient-background" aria-hidden="true">
-        <div className="ambient-gradient">
-          <div className="ambient-blob ambient-blob-1" />
-          <div className="ambient-blob ambient-blob-2" />
-          <div className="ambient-blob ambient-blob-3" />
-          <div className="ambient-blob ambient-blob-4" />
-        </div>
-        <div className="noise-overlay" />
-      </div>
+    <div className={`container ${idleState ? "is-idle" : ""}${!windowVisible ? " is-hidden" : ""}`}>
+      <AmbientBackground
+        accent1={accentTheme.accent1}
+        accent2={accentTheme.accent2}
+        idle={idleState}
+        hidden={!windowVisible}
+      />
 
       <div className="search-section">
         <div className="search-header">
