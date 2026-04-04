@@ -84,13 +84,13 @@ interface AccentTheme {
 }
 
 interface DeckCard {
+  key: string;
   eyebrow: string;
   title: string;
   subtitle: string;
   badges: string[];
   note: string;
   imageSrc: string | null;
-  extraItems: string[];
 }
 
 interface NormalizedTrackMetadata {
@@ -102,6 +102,8 @@ interface NormalizedTrackMetadata {
 
 const APP_TABS = ["Discover", "Similar albums", "Queue"] as const;
 type AppTab = typeof APP_TABS[number];
+type LaneTab = Extract<AppTab, "Discover" | "Similar albums">;
+type LaneMotionDirection = "forward" | "backward";
 
 const NEUTRAL_TRACK: TrackInfo = {
   title: "",
@@ -626,175 +628,227 @@ function formatMetric(value: string | null | undefined, label: string): string |
   }).format(normalized)} ${label}`;
 }
 
-function buildDiscoverCard(
+function createSingleCard(
+  key: string,
+  eyebrow: string,
+  title: string,
+  subtitle: string,
+  badges: string[],
+  note: string,
+  imageSrc: string | null
+): DeckCard {
+  return {
+    key,
+    eyebrow,
+    title,
+    subtitle,
+    badges,
+    note,
+    imageSrc
+  };
+}
+
+function buildIdleCard(tab: AppTab, mood: string): DeckCard {
+  return createSingleCard(
+    `${tab}-idle`,
+    tab,
+    tab === "Queue"
+      ? "Queue is parked until integrations land"
+      : "Start any track to wake Last.fm",
+    "Wayward will enrich the overlay from the current SMTC session.",
+    [mood, "Standby"],
+    "Once playback starts, Wayward will fetch similar tracks and artist album context from Last.fm.",
+    null
+  );
+}
+
+function buildDiscoverCards(
   trackInfo: TrackInfo,
   normalizedTrack: NormalizedTrackMetadata,
   context: LastfmContext | null,
   mood: string,
   status: "idle" | "loading" | "ready" | "error",
   errorMessage: string | null
-): DeckCard {
+): DeckCard[] {
   if (status === "loading") {
-    return {
-      eyebrow: "Discover",
-      title: "Finding a nearby left turn",
-      subtitle: `${normalizedTrack.displayArtist} / ${trackInfo.title}`,
-      badges: ["Last.fm", "Scanning"],
-      note: "Pulling similar tracks and tags from Last.fm for the current song.",
-      imageSrc: trackInfo.album_art,
-      extraItems: []
-    };
+    return [createSingleCard(
+      "discover-loading",
+      "Discover",
+      "Finding a nearby left turn",
+      `${normalizedTrack.displayArtist} / ${trackInfo.title}`,
+      ["Last.fm", "Scanning"],
+      "Pulling similar tracks and tags from Last.fm for the current song.",
+      trackInfo.album_art
+    )];
   }
 
   if (status === "error") {
-    return {
-      eyebrow: "Discover",
-      title: "No Last.fm match yet",
-      subtitle: `${normalizedTrack.displayArtist} / ${trackInfo.title}`,
-      badges: ["Last.fm", mood],
-      note: errorMessage ?? "Last.fm could not map this track right now.",
-      imageSrc: trackInfo.album_art,
-      extraItems: []
-    };
+    return [createSingleCard(
+      "discover-error",
+      "Discover",
+      "No Last.fm match yet",
+      `${normalizedTrack.displayArtist} / ${trackInfo.title}`,
+      ["Last.fm", mood],
+      errorMessage ?? "Last.fm could not map this track right now.",
+      trackInfo.album_art
+    )];
   }
 
-  const primaryMatch = context?.similar_tracks[0];
-  if (!primaryMatch) {
-    return {
-      eyebrow: "Discover",
-      title: "No similar tracks surfaced",
-      subtitle: `${normalizedTrack.displayArtist} / ${trackInfo.title}`,
-      badges: ["Last.fm", mood],
-      note: "Try another track. Last.fm did not return similar songs for this one.",
-      imageSrc: trackInfo.album_art,
-      extraItems: []
-    };
+  if (!context || context.similar_tracks.length === 0) {
+    return [createSingleCard(
+      "discover-empty",
+      "Discover",
+      "No similar tracks surfaced",
+      `${normalizedTrack.displayArtist} / ${trackInfo.title}`,
+      ["Last.fm", mood],
+      "Try another track. Last.fm did not return similar songs for this one.",
+      trackInfo.album_art
+    )];
   }
 
   const metrics = [
-    formatMetric(context?.source.listeners, "listeners"),
-    formatMetric(context?.source.playcount, "plays")
+    formatMetric(context.source.listeners, "listeners"),
+    formatMetric(context.source.playcount, "plays")
   ].filter(Boolean) as string[];
-  const badges = context?.source.tags?.slice(0, 2) ?? [];
+  const badges = context.source.tags.slice(0, 2);
 
-  return {
-    eyebrow: "Discover",
-    title: primaryMatch.name,
-    subtitle: [primaryMatch.artist, primaryMatch.album].filter(Boolean).join(" / "),
-    badges: badges.length > 0 ? badges : ["Last.fm", mood],
-    note: metrics.length > 0
-      ? `Seeded from ${trackInfo.title}. ${metrics.join(" / ")} on Last.fm.`
-      : `Closest track match Last.fm found for ${trackInfo.title}.`,
-    imageSrc: primaryMatch.image_url ?? trackInfo.album_art,
-    extraItems: context?.similar_tracks.slice(1, 4).map((item) => item.name) ?? []
-  };
+  return context.similar_tracks.map((item, index) => createSingleCard(
+    `discover-${index}-${item.artist}-${item.name}`,
+    "Discover",
+    item.name,
+    [item.artist, item.album].filter(Boolean).join(" / "),
+    badges.length > 0 ? badges : ["Last.fm", mood],
+    index === 0
+      ? metrics.length > 0
+        ? `Seeded from ${trackInfo.title}. ${metrics.join(" / ")} on Last.fm.`
+        : `Closest track match Last.fm found for ${trackInfo.title}.`
+      : metrics.length > 0
+        ? `Another nearby turn from ${trackInfo.title}. ${metrics.join(" / ")} on Last.fm.`
+        : `Another similar track Last.fm surfaced for ${trackInfo.title}.`,
+    item.image_url ?? trackInfo.album_art
+  ));
 }
 
-function buildAlbumsCard(
+function buildAlbumCards(
   trackInfo: TrackInfo,
   normalizedTrack: NormalizedTrackMetadata,
   context: LastfmContext | null,
   mood: string,
   status: "idle" | "loading" | "ready" | "error",
   errorMessage: string | null
-): DeckCard {
+): DeckCard[] {
   if (status === "loading") {
-    return {
-      eyebrow: "Similar albums",
-      title: "Mapping the artist lane",
-      subtitle: normalizedTrack.displayArtist,
-      badges: ["Last.fm", "Albums"],
-      note: "Looking up the strongest album picks around the current artist.",
-      imageSrc: trackInfo.album_art,
-      extraItems: []
-    };
+    return [createSingleCard(
+      "albums-loading",
+      "Similar albums",
+      "Mapping the artist lane",
+      normalizedTrack.displayArtist,
+      ["Last.fm", "Albums"],
+      "Looking up the strongest album picks around the current artist.",
+      trackInfo.album_art
+    )];
   }
 
   if (status === "error") {
-    return {
-      eyebrow: "Similar albums",
-      title: "Album lane unavailable",
-      subtitle: normalizedTrack.displayArtist,
-      badges: ["Last.fm", mood],
-      note: errorMessage ?? "Last.fm could not return album context for this artist.",
-      imageSrc: trackInfo.album_art,
-      extraItems: []
-    };
+    return [createSingleCard(
+      "albums-error",
+      "Similar albums",
+      "Album lane unavailable",
+      normalizedTrack.displayArtist,
+      ["Last.fm", mood],
+      errorMessage ?? "Last.fm could not return album context for this artist.",
+      trackInfo.album_art
+    )];
   }
 
-  const albumPick = context?.top_albums[0];
-  if (!albumPick) {
-    return {
-      eyebrow: "Similar albums",
-      title: "No album picks surfaced",
-      subtitle: normalizedTrack.displayArtist,
-      badges: ["Last.fm", mood],
-      note: "Last.fm did not return additional album context for this artist.",
-      imageSrc: trackInfo.album_art,
-      extraItems: []
-    };
+  if (!context || context.top_albums.length === 0) {
+    return [createSingleCard(
+      "albums-empty",
+      "Similar albums",
+      "No album picks surfaced",
+      normalizedTrack.displayArtist,
+      ["Last.fm", mood],
+      "Last.fm did not return additional album context for this artist.",
+      trackInfo.album_art
+    )];
   }
 
-  const albumBadge = albumPick.rank ? `Top ${albumPick.rank}` : "Album pick";
-  const listeners = formatMetric(albumPick.listeners, "plays");
+  return context.top_albums.map((item, index) => {
+    const albumBadge = item.rank ? `Top ${item.rank}` : "Album pick";
+    const listeners = formatMetric(item.listeners, "plays");
 
-  return {
-    eyebrow: "Similar albums",
-    title: albumPick.name,
-    subtitle: albumPick.artist,
-    badges: [albumBadge, ...(listeners ? [listeners] : [mood])],
-    note: "Using Last.fm artist album data while queue integrations stay parked for now.",
-    imageSrc: albumPick.image_url ?? trackInfo.album_art,
-    extraItems: context?.top_albums.slice(1, 4).map((item) => item.name) ?? []
-  };
+    return createSingleCard(
+      `albums-${index}-${item.artist}-${item.name}`,
+      "Similar albums",
+      item.name,
+      item.artist,
+      [albumBadge, ...(listeners ? [listeners] : [mood])],
+      index === 0
+        ? "Using Last.fm artist album data while queue integrations stay parked for now."
+        : `Another album lane around ${normalizedTrack.displayArtist} from Last.fm.`,
+      item.image_url ?? trackInfo.album_art
+    );
+  });
 }
 
 function buildQueueCard(trackInfo: TrackInfo, normalizedTrack: NormalizedTrackMetadata, mood: string): DeckCard {
-  return {
-    eyebrow: "Queue",
-    title: "Queue is parked for now",
-    subtitle: trackInfo.title
+  return createSingleCard(
+    "queue",
+    "Queue",
+    "Queue is parked for now",
+    trackInfo.title
       ? `${normalizedTrack.displayArtist} / ${trackInfo.title}`
       : "Waiting for player integrations",
-    badges: ["Unused", mood],
-    note: "We are not wiring Apple Music or Spotify yet, so this tab stays informational only.",
-    imageSrc: trackInfo.album_art,
-    extraItems: []
-  };
+    ["Unused", mood],
+    "We are not wiring Apple Music or Spotify yet, so this tab stays informational only.",
+    trackInfo.album_art
+  );
 }
 
-function getDeckCard(
-  activeTab: AppTab,
-  trackInfo: TrackInfo,
-  normalizedTrack: NormalizedTrackMetadata,
-  context: LastfmContext | null,
-  idle: boolean,
-  mood: string,
-  status: "idle" | "loading" | "ready" | "error",
-  errorMessage: string | null
-): DeckCard {
-  if (idle) {
-    return {
-      eyebrow: activeTab,
-      title: activeTab === "Queue"
-        ? "Queue is parked until integrations land"
-        : "Start any track to wake Last.fm",
-      subtitle: "Wayward will enrich the overlay from the current SMTC session.",
-      badges: [mood, "Standby"],
-      note: "Once playback starts, Wayward will fetch similar tracks and artist album context from Last.fm.",
-      imageSrc: null,
-      extraItems: []
-    };
-  }
+function isEditableElement(element: Element | null): boolean {
+  return element instanceof HTMLElement
+    && (element.tagName === "INPUT"
+      || element.tagName === "TEXTAREA"
+      || element.tagName === "SELECT"
+      || element.isContentEditable);
+}
 
-  switch (activeTab) {
-    case "Discover":
-      return buildDiscoverCard(trackInfo, normalizedTrack, context, mood, status, errorMessage);
-    case "Similar albums":
-      return buildAlbumsCard(trackInfo, normalizedTrack, context, mood, status, errorMessage);
-    case "Queue":
-      return buildQueueCard(trackInfo, normalizedTrack, mood);
-  }
+function renderSwipeCard(card: DeckCard, tabClassName: string, variant: "center" | "left" | "right") {
+  const isPreview = variant !== "center";
+
+  return (
+    <div
+      key={`${variant}-${card.key}`}
+      className={`swipe-card ${tabClassName} ${variant} ${isPreview ? "preview" : "center"}`}
+      aria-hidden={isPreview}
+    >
+      <div className="album-art album-art-large">
+        {card.imageSrc ? (
+          <img
+            key={`${variant}-${card.imageSrc}`}
+            src={card.imageSrc}
+            alt=""
+            className="album-art-inner album-art-image"
+          />
+        ) : (
+          <div className="album-art-inner" />
+        )}
+      </div>
+      <div className="swipe-card-content">
+        <span className="swipe-card-eyebrow">{card.eyebrow}</span>
+        <h3 className="swipe-card-title">{card.title}</h3>
+        <p className="swipe-card-artist">{card.subtitle}</p>
+        <div className="badges">
+          {card.badges.map((badge, index) => (
+            <span key={`${card.key}-${badge}-${index}`} className={`badge ${index === 0 ? "mood" : ""}`}>
+              {badge}
+            </span>
+          ))}
+        </div>
+        <p className="swipe-card-note">{card.note}</p>
+      </div>
+    </div>
+  );
 }
 
 function App() {
@@ -804,24 +858,65 @@ function App() {
   const [lastfmContext, setLastfmContext] = useState<LastfmContext | null>(null);
   const [lastfmStatus, setLastfmStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [lastfmError, setLastfmError] = useState<string | null>(null);
+  const [discoverCardIndex, setDiscoverCardIndex] = useState(0);
+  const [albumCardIndex, setAlbumCardIndex] = useState(0);
+  const [laneMotion, setLaneMotion] = useState<{ tab: LaneTab; direction: LaneMotionDirection } | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [windowVisible, setWindowVisible] = useState(true);
   const shortcutsAreaRef = useRef<HTMLDivElement>(null);
   const shortcutsRef = useRef<HTMLDivElement>(null);
   const lastfmCacheRef = useRef<Map<string, LastfmContext>>(new Map());
+  const laneMotionTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const idleState = isNeutralTrack(trackInfo);
   const normalizedTrack = normalizeTrackMetadata(trackInfo);
-  const deckCard = getDeckCard(
-    activeTab,
-    trackInfo,
-    normalizedTrack,
-    lastfmContext,
-    idleState,
-    accentTheme.mood,
-    lastfmStatus,
-    lastfmError
-  );
+  const lookupKey = buildLookupKey(normalizedTrack);
+  const discoverCards = idleState
+    ? [buildIdleCard("Discover", accentTheme.mood)]
+    : buildDiscoverCards(
+      trackInfo,
+      normalizedTrack,
+      lastfmContext,
+      accentTheme.mood,
+      lastfmStatus,
+      lastfmError
+    );
+  const albumCards = idleState
+    ? [buildIdleCard("Similar albums", accentTheme.mood)]
+    : buildAlbumCards(
+      trackInfo,
+      normalizedTrack,
+      lastfmContext,
+      accentTheme.mood,
+      lastfmStatus,
+      lastfmError
+    );
+  const queueCard = idleState
+    ? buildIdleCard("Queue", accentTheme.mood)
+    : buildQueueCard(trackInfo, normalizedTrack, accentTheme.mood);
+  const discoverCardsKey = discoverCards.map((card) => card.key).join("\u241f");
+  const albumCardsKey = albumCards.map((card) => card.key).join("\u241f");
+  const activeCards = activeTab === "Discover"
+    ? discoverCards
+    : activeTab === "Similar albums"
+      ? albumCards
+      : [queueCard];
+  const activeIndex = activeTab === "Discover"
+    ? clamp(discoverCardIndex, 0, Math.max(discoverCards.length - 1, 0))
+    : activeTab === "Similar albums"
+      ? clamp(albumCardIndex, 0, Math.max(albumCards.length - 1, 0))
+      : 0;
+  const centerCard = activeCards[activeIndex] ?? queueCard;
+  const leftPreviewCard = activeTab !== "Queue" && activeIndex > 0
+    ? activeCards[activeIndex - 1]
+    : null;
+  const rightPreviewCard = activeTab !== "Queue" && activeIndex < activeCards.length - 1
+    ? activeCards[activeIndex + 1]
+    : null;
+  const stackedLaneEnabled = activeTab !== "Queue" && activeCards.length > 1;
+  const laneMotionClass = laneMotion && laneMotion.tab === activeTab
+    ? `lane-animating lane-${laneMotion.direction}`
+    : "";
 
   useEffect(() => {
     const root = document.documentElement;
@@ -861,8 +956,6 @@ function App() {
   }, [idleState, trackInfo.album_art]);
 
   useEffect(() => {
-    const lookupKey = buildLookupKey(normalizedTrack);
-
     if (idleState || !normalizedTrack.lookupTitle.trim() || !normalizedTrack.lookupArtist.trim()) {
       setLastfmContext(null);
       setLastfmStatus("idle");
@@ -903,7 +996,21 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [idleState, normalizedTrack.displayAlbum, normalizedTrack.lookupArtist, normalizedTrack.lookupTitle]);
+  }, [idleState, lookupKey, normalizedTrack.displayAlbum, normalizedTrack.lookupArtist, normalizedTrack.lookupTitle]);
+
+  useEffect(() => {
+    setDiscoverCardIndex(0);
+  }, [discoverCardsKey, lookupKey]);
+
+  useEffect(() => {
+    setAlbumCardIndex(0);
+  }, [albumCardsKey, lookupKey]);
+
+  useEffect(() => () => {
+    if (laneMotionTimeoutRef.current !== null) {
+      window.clearTimeout(laneMotionTimeoutRef.current);
+    }
+  }, []);
 
   const handlePlayPause = useCallback(async () => {
     try {
@@ -929,8 +1036,40 @@ function App() {
     }
   }, []);
 
+  const triggerLaneMotion = useCallback((tab: LaneTab, direction: LaneMotionDirection) => {
+    if (laneMotionTimeoutRef.current !== null) {
+      window.clearTimeout(laneMotionTimeoutRef.current);
+    }
+
+    setLaneMotion({ tab, direction });
+    laneMotionTimeoutRef.current = window.setTimeout(() => {
+      setLaneMotion(null);
+      laneMotionTimeoutRef.current = null;
+    }, 280);
+  }, []);
+
+  const navigateLane = useCallback((tab: LaneTab, direction: -1 | 1) => {
+    const motionDirection: LaneMotionDirection = direction === 1 ? "forward" : "backward";
+
+    if (tab === "Discover") {
+      const nextIndex = clamp(discoverCardIndex + direction, 0, Math.max(discoverCards.length - 1, 0));
+      if (nextIndex === discoverCardIndex) return;
+      setDiscoverCardIndex(nextIndex);
+      triggerLaneMotion(tab, motionDirection);
+      return;
+    }
+
+    const nextIndex = clamp(albumCardIndex + direction, 0, Math.max(albumCards.length - 1, 0));
+    if (nextIndex === albumCardIndex) return;
+    setAlbumCardIndex(nextIndex);
+    triggerLaneMotion(tab, motionDirection);
+  }, [albumCardIndex, albumCards.length, discoverCardIndex, discoverCards.length, triggerLaneMotion]);
+
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
+      const lowerKey = event.key.toLowerCase();
+      const typingInEditable = isEditableElement(document.activeElement);
+
       if (event.key === "Escape") {
         setShowShortcuts(false);
         setWindowVisible(false);
@@ -955,6 +1094,24 @@ function App() {
       if (event.key === " " && !event.shiftKey && document.activeElement?.tagName !== "INPUT") {
         event.preventDefault();
         handlePlayPause();
+      }
+
+      if (
+        !typingInEditable
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.altKey
+        && (lowerKey === "j" || lowerKey === "l")
+      ) {
+        if (activeTab === "Discover" && discoverCards.length > 1) {
+          event.preventDefault();
+          navigateLane("Discover", lowerKey === "j" ? -1 : 1);
+        }
+
+        if (activeTab === "Similar albums" && albumCards.length > 1) {
+          event.preventDefault();
+          navigateLane("Similar albums", lowerKey === "j" ? -1 : 1);
+        }
       }
 
       if (event.key === "1") {
@@ -986,7 +1143,7 @@ function App() {
       window.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [handlePlayPause, handleSkipNext, handleSkipPrevious]);
+  }, [activeTab, albumCards.length, discoverCards.length, handlePlayPause, handleSkipNext, handleSkipPrevious, navigateLane]);
 
   useEffect(() => {
     const unlisten = listen<TrackInfo>("smtc-update", (event) => {
@@ -1119,6 +1276,14 @@ function App() {
                   <div className="shortcut-keys"><kbd>3</kbd></div>
                   <span>Queue</span>
                 </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>J</kbd></div>
+                  <span>Previous card in Discover / Albums</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>L</kbd></div>
+                  <span>Next card in Discover / Albums</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1184,41 +1349,12 @@ function App() {
         </div>
 
         <div className="deck-container">
-          <div className="swipe-card-area">
-            <div key={activeTab} className={`swipe-card ${tabClassName}`}>
-              <div className="album-art album-art-large">
-                {deckCard.imageSrc ? (
-                  <img
-                    key={`${activeTab}-${deckCard.imageSrc}`}
-                    src={deckCard.imageSrc}
-                    alt=""
-                    className="album-art-inner album-art-image"
-                  />
-                ) : (
-                  <div className="album-art-inner" />
-                )}
-              </div>
-              <div className="swipe-card-content">
-                <span className="swipe-card-eyebrow">{deckCard.eyebrow}</span>
-                <h3 className="swipe-card-title">{deckCard.title}</h3>
-                <p className="swipe-card-artist">{deckCard.subtitle}</p>
-                <div className="badges">
-                  {deckCard.badges.map((badge, index) => (
-                    <span key={`${activeTab}-${badge}`} className={`badge ${index === 0 ? "mood" : ""}`}>
-                      {badge}
-                    </span>
-                  ))}
-                </div>
-                <p className="swipe-card-note">{deckCard.note}</p>
-                {deckCard.extraItems.length > 0 && (
-                  <div className="swipe-card-extras">
-                    {deckCard.extraItems.map((item) => (
-                      <span key={`${activeTab}-${item}`} className="swipe-card-extra-chip">
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                )}
+          <div className={`swipe-card-area ${stackedLaneEnabled ? "stacked" : "single"}`}>
+            <div className={`swipe-card-stack ${stackedLaneEnabled ? "stacked" : "single"} ${laneMotionClass}`.trim()}>
+              {leftPreviewCard && renderSwipeCard(leftPreviewCard, tabClassName, "left")}
+              {rightPreviewCard && renderSwipeCard(rightPreviewCard, tabClassName, "right")}
+              <div key={`${activeTab}-${centerCard.key}`} className="swipe-card-center">
+                {renderSwipeCard(centerCard, tabClassName, "center")}
               </div>
             </div>
           </div>
