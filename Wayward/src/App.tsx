@@ -94,6 +94,7 @@ interface DeckCard {
 }
 
 interface NormalizedTrackMetadata {
+  lookupTitle: string;
   lookupArtist: string;
   displayArtist: string;
   displayAlbum: string;
@@ -515,7 +516,75 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
   });
 }
 
+const LOOKUP_SUFFIX_KEYWORDS = [
+  "feat",
+  "ft.",
+  "with ",
+  "live",
+  "remaster",
+  "remix",
+  "mix",
+  "version",
+  "edit",
+  "mono",
+  "stereo",
+  "acoustic",
+  "instrumental",
+  "karaoke",
+  "bonus",
+  "radio edit",
+  "clean",
+  "explicit"
+];
+
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function shouldStripLookupSuffix(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return LOOKUP_SUFFIX_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
+
+function stripTrailingLookupEnclosure(value: string): string {
+  const match = value.match(/^(.*?)(?:\s*[\(\[\{]([^\(\)\[\]\{\}]*)[\)\]\}])$/);
+  if (!match) return value;
+
+  const [, head = "", inner = ""] = match;
+  return shouldStripLookupSuffix(inner) ? collapseWhitespace(head) : value;
+}
+
+function stripTrailingLookupSuffix(value: string): string {
+  for (const separator of [" - ", " \u2013 ", " \u2014 ", ": "]) {
+    const index = value.lastIndexOf(separator);
+    if (index <= 0) continue;
+
+    const suffix = value.slice(index + separator.length);
+    if (shouldStripLookupSuffix(suffix)) {
+      return collapseWhitespace(value.slice(0, index));
+    }
+  }
+
+  return value;
+}
+
+function normalizeLookupTitle(title: string): string {
+  let normalized = collapseWhitespace(title);
+
+  while (normalized) {
+    const stripped = stripTrailingLookupSuffix(stripTrailingLookupEnclosure(normalized));
+    if (stripped === normalized) {
+      break;
+    }
+
+    normalized = stripped;
+  }
+
+  return normalized || collapseWhitespace(title);
+}
+
 function normalizeTrackMetadata(trackInfo: TrackInfo): NormalizedTrackMetadata {
+  const rawTitle = trackInfo.title.trim();
   const rawArtist = trackInfo.artist.trim();
   const rawAlbumArtist = trackInfo.album_artist.trim();
   const rawAlbumTitle = trackInfo.album_title.trim();
@@ -533,14 +602,15 @@ function normalizeTrackMetadata(trackInfo: TrackInfo): NormalizedTrackMetadata {
   const preferredAlbumCandidate = rawAlbumTitle || albumArtistCandidate.album || artistCandidate.album;
 
   return {
+    lookupTitle: normalizeLookupTitle(rawTitle),
     lookupArtist: preferredArtistCandidate,
     displayArtist: preferredArtistCandidate,
     displayAlbum: preferredAlbumCandidate
   };
 }
 
-function buildLookupKey(trackInfo: TrackInfo, normalizedTrack: NormalizedTrackMetadata): string {
-  return [trackInfo.title, normalizedTrack.lookupArtist, normalizedTrack.displayAlbum]
+function buildLookupKey(normalizedTrack: NormalizedTrackMetadata): string {
+  return [normalizedTrack.lookupTitle, normalizedTrack.lookupArtist, normalizedTrack.displayAlbum]
     .map((value) => value.trim().toLowerCase())
     .join("\u241f");
 }
@@ -791,9 +861,9 @@ function App() {
   }, [idleState, trackInfo.album_art]);
 
   useEffect(() => {
-    const lookupKey = buildLookupKey(trackInfo, normalizedTrack);
+    const lookupKey = buildLookupKey(normalizedTrack);
 
-    if (idleState || !trackInfo.title.trim() || !normalizedTrack.lookupArtist.trim()) {
+    if (idleState || !normalizedTrack.lookupTitle.trim() || !normalizedTrack.lookupArtist.trim()) {
       setLastfmContext(null);
       setLastfmStatus("idle");
       setLastfmError(null);
@@ -814,7 +884,7 @@ function App() {
 
     invoke<LastfmContext>("lookup_lastfm_context", {
       artist: normalizedTrack.lookupArtist,
-      track: trackInfo.title,
+      track: normalizedTrack.lookupTitle,
       albumTitle: normalizedTrack.displayAlbum || null
     })
       .then((result) => {
@@ -833,7 +903,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [idleState, normalizedTrack.displayAlbum, normalizedTrack.lookupArtist, trackInfo.title]);
+  }, [idleState, normalizedTrack.displayAlbum, normalizedTrack.lookupArtist, normalizedTrack.lookupTitle]);
 
   const handlePlayPause = useCallback(async () => {
     try {

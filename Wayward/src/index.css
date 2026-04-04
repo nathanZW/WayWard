@@ -32,14 +32,15 @@ body {
 }
 
 #root {
-  height: 100vh;
+  height: 120;
   width: 100vw;
   padding: 0;
   overflow: hidden;
   background: transparent;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   width: 100%;
 }

@@ -28,3 +28,4 @@ tokio = { version = "1.50.0", features = ["time"] }
 window-vibrancy = "0.7.1"
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+dotenvy = "0.15"

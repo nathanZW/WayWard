@@ -66,14 +66,52 @@ pub async fn lookup_lastfm_context(
         .build()
         .map_err(|error| format!("Failed to create Last.fm client: {error}"))?;
 
+    let track_candidates = build_track_lookup_candidates(trimmed_track);
+    let mut first_error: Option<String> = None;
+
+    for track_candidate in &track_candidates {
+        let (context, candidate_error) = fetch_context_candidate(
+            &client,
+            trimmed_artist,
+            track_candidate,
+            trimmed_album_title,
+        )
+        .await;
+
+        if context_has_data(&context) {
+            eprintln!(
+                "[lastfm] lookup result artist='{trimmed_artist}' track='{track_candidate}' tags={} similar_tracks={} top_albums={}",
+                context.source.tags.len(),
+                context.similar_tracks.len(),
+                context.top_albums.len()
+            );
+            return Ok(context);
+        }
+
+        if let Some(error) = candidate_error {
+            first_error.get_or_insert(error);
+        }
+    }
+
+    Err(first_error.unwrap_or_else(|| {
+        "Last.fm did not return any metadata for the current song.".to_string()
+    }))
+}
+
+async fn fetch_context_candidate(
+    client: &Client,
+    artist: &str,
+    track: &str,
+    album_title: Option<&str>,
+) -> (LastfmContext, Option<String>) {
     let mut first_error: Option<String> = None;
 
     let track_info = match fetch_method(
-        &client,
+        client,
         "track.getInfo",
         vec![
-            ("artist".to_string(), trimmed_artist.to_string()),
-            ("track".to_string(), trimmed_track.to_string()),
+            ("artist".to_string(), artist.to_string()),
+            ("track".to_string(), track.to_string()),
         ],
     )
     .await
@@ -86,11 +124,11 @@ pub async fn lookup_lastfm_context(
     };
 
     let track_tags = match fetch_method(
-        &client,
+        client,
         "track.getTopTags",
         vec![
-            ("artist".to_string(), trimmed_artist.to_string()),
-            ("track".to_string(), trimmed_track.to_string()),
+            ("artist".to_string(), artist.to_string()),
+            ("track".to_string(), track.to_string()),
         ],
     )
     .await
@@ -103,11 +141,11 @@ pub async fn lookup_lastfm_context(
     };
 
     let similar_tracks = match fetch_method(
-        &client,
+        client,
         "track.getSimilar",
         vec![
-            ("artist".to_string(), trimmed_artist.to_string()),
-            ("track".to_string(), trimmed_track.to_string()),
+            ("artist".to_string(), artist.to_string()),
+            ("track".to_string(), track.to_string()),
             ("limit".to_string(), "8".to_string()),
         ],
     )
@@ -121,10 +159,10 @@ pub async fn lookup_lastfm_context(
     };
 
     let top_albums = match fetch_method(
-        &client,
+        client,
         "artist.getTopAlbums",
         vec![
-            ("artist".to_string(), trimmed_artist.to_string()),
+            ("artist".to_string(), artist.to_string()),
             ("limit".to_string(), "8".to_string()),
         ],
     )
@@ -144,7 +182,7 @@ pub async fn lookup_lastfm_context(
     };
 
     if let Some(current_album) = album_title {
-        let current_album = normalize_name(&current_album);
+        let current_album = normalize_name(current_album);
         context
             .top_albums
             .retain(|album| normalize_name(&album.name) != current_album);
@@ -153,23 +191,7 @@ pub async fn lookup_lastfm_context(
     context.similar_tracks.truncate(6);
     context.top_albums.truncate(6);
 
-    eprintln!(
-        "[lastfm] lookup result artist='{trimmed_artist}' track='{trimmed_track}' tags={} similar_tracks={} top_albums={}",
-        context.source.tags.len(),
-        context.similar_tracks.len(),
-        context.top_albums.len()
-    );
-
-    if context.source.tags.is_empty()
-        && context.similar_tracks.is_empty()
-        && context.top_albums.is_empty()
-    {
-        return Err(first_error.unwrap_or_else(|| {
-            "Last.fm did not return any metadata for the current song.".to_string()
-        }));
-    }
-
-    Ok(context)
+    (context, first_error)
 }
 
 async fn fetch_method(
@@ -363,4 +385,122 @@ fn as_u32(value: Option<&Value>) -> Option<u32> {
 
 fn normalize_name(value: &str) -> String {
     value.trim().to_ascii_lowercase()
+}
+
+fn context_has_data(context: &LastfmContext) -> bool {
+    !context.source.tags.is_empty()
+        || !context.similar_tracks.is_empty()
+        || !context.top_albums.is_empty()
+}
+
+fn build_track_lookup_candidates(track: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    push_lookup_candidate(&mut candidates, collapse_whitespace(track));
+    push_lookup_candidate(&mut candidates, normalize_lookup_title(track));
+    candidates
+}
+
+fn push_lookup_candidate(candidates: &mut Vec<String>, candidate: String) {
+    let trimmed = candidate.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    if candidates
+        .iter()
+        .any(|existing| existing.eq_ignore_ascii_case(trimmed))
+    {
+        return;
+    }
+
+    candidates.push(trimmed.to_string());
+}
+
+fn collapse_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn normalize_lookup_title(value: &str) -> String {
+    let mut normalized = collapse_whitespace(value);
+
+    loop {
+        let stripped_brackets =
+            strip_trailing_lookup_enclosure(&normalized).unwrap_or_else(|| normalized.clone());
+        let stripped_suffix =
+            strip_trailing_lookup_suffix(&stripped_brackets).unwrap_or(stripped_brackets.clone());
+
+        if stripped_suffix == normalized {
+            break;
+        }
+
+        normalized = stripped_suffix;
+    }
+
+    normalized
+}
+
+fn strip_trailing_lookup_enclosure(value: &str) -> Option<String> {
+    let closing = value.chars().last()?;
+    let opening = match closing {
+        ')' => '(',
+        ']' => '[',
+        '}' => '{',
+        _ => return None,
+    };
+
+    let closing_start = value.len() - closing.len_utf8();
+    let opening_index = value[..closing_start].rfind(opening)?;
+    let inner = value[opening_index + opening.len_utf8()..closing_start].trim();
+
+    if !is_lookup_decorator(inner) {
+        return None;
+    }
+
+    Some(collapse_whitespace(value[..opening_index].trim_end()))
+}
+
+fn strip_trailing_lookup_suffix(value: &str) -> Option<String> {
+    for separator in [" - ", " \u{2013} ", " \u{2014} ", ": "] {
+        let Some(index) = value.rfind(separator) else {
+            continue;
+        };
+
+        let head = value[..index].trim_end();
+        let suffix = value[index + separator.len()..].trim();
+
+        if head.is_empty() || !is_lookup_decorator(suffix) {
+            continue;
+        }
+
+        return Some(collapse_whitespace(head));
+    }
+
+    None
+}
+
+fn is_lookup_decorator(value: &str) -> bool {
+    let normalized = normalize_name(value);
+
+    [
+        "feat",
+        "ft.",
+        "with ",
+        "live",
+        "remaster",
+        "remix",
+        "mix",
+        "version",
+        "edit",
+        "mono",
+        "stereo",
+        "acoustic",
+        "instrumental",
+        "karaoke",
+        "bonus",
+        "radio edit",
+        "clean",
+        "explicit",
+    ]
+    .iter()
+    .any(|keyword| normalized.contains(keyword))
 }

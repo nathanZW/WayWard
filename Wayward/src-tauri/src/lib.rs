@@ -1,9 +1,19 @@
+mod lastfm;
 mod smtc;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri::command;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use window_vibrancy::apply_acrylic;
+
+fn load_local_env() {
+    for candidate in [".env", "../.env"] {
+        if dotenvy::from_filename(candidate).is_ok() {
+            eprintln!("[env] loaded {candidate}");
+            return;
+        }
+    }
+}
 
 #[command]
 async fn toggle_playback(app: AppHandle) -> Result<(), String> {
@@ -105,6 +115,8 @@ pub fn run() {
             .build())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
+            load_local_env();
+
             if let Err(e) = app.global_shortcut().register(ctrl_space) {
                 eprintln!("Failed to register global shortcut: {:?}", e);
             }
@@ -117,7 +129,13 @@ pub fn run() {
             smtc::start_smtc_listener(app.handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, toggle_playback, skip_next, skip_previous])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            toggle_playback,
+            skip_next,
+            skip_previous,
+            lastfm::lookup_lastfm_context
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
