@@ -425,6 +425,17 @@
   box-shadow: none;
 }
 
+.now-playing-card .badge.active {
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.now-playing-card .badge.mood {
+  background: var(--surface-strong);
+  border-color: var(--surface-border);
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+
 /* ── Progress Bar ──────────────────────────────────────────── */
 
 .progress-bar-container {
