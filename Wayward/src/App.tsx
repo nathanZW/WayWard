@@ -300,7 +300,7 @@ function normalizeAccent(rgb: RGB, idle: boolean): RGB {
   const hsl = rgbToHsl(rgb);
   const minimumSaturation = idle ? 0.06 : 0.24;
   const maximumSaturation = idle ? 0.24 : 0.82;
-  const minimumLightness = idle ? 0.72 : 0.28;
+  const minimumLightness = idle ? 0.72 : 0.36;
   const maximumLightness = idle ? 0.9 : 0.64;
 
   return hslToRgb({
