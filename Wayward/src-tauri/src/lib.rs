@@ -124,7 +124,7 @@ pub fn run() {
             let window = app.get_webview_window("main").unwrap();
 
             #[cfg(target_os = "windows")]
-            let _ = apply_acrylic(&window, Some((18, 18, 20, 180)));
+            let _ = apply_acrylic(&window, Some((18, 18, 20, 130)));
 
             smtc::start_smtc_listener(app.handle().clone());
             Ok(())

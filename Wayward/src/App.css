@@ -190,7 +190,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: background 0.2s, color 0.2s;
   flex-shrink: 0;
 }
 
@@ -256,7 +256,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  transition: all 0.2s;
+  transition: background 0.2s, color 0.2s;
 }
 
 .close-shortcuts:hover {
@@ -314,9 +314,9 @@
   border: 1px solid var(--surface-border);
   border-radius: 16px;
   box-shadow:
-    0 8px 30px rgba(0, 0, 0, 0.45),
+    0 8px 22px rgba(0, 0, 0, 0.55),
     0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-    0 12px 32px var(--accent-shadow);
+    0 10px 26px var(--accent-shadow);
   transition: box-shadow 1.2s ease, background 1.2s ease, border-color 1.2s ease;
 }
 
@@ -473,7 +473,7 @@
   justify-content: center;
   color: white;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.2s;
   flex-shrink: 0;
 }
 
@@ -525,7 +525,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   position: relative;
-  transition: all 0.2s;
+  transition: color 0.2s, background 0.2s;
   text-align: center;
   border-radius: 10px 10px 0 0;
 }
@@ -632,7 +632,7 @@
   align-items: center;
   gap: 10px;
   box-shadow:
-    0 12px 30px rgba(0, 0, 0, 0.45),
+    0 10px 22px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.15),
     0 0 0 1px rgba(255, 255, 255, 0.05) inset;
   overflow: hidden;
@@ -647,7 +647,7 @@
 .swipe-card.center {
   z-index: 3;
   box-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.5),
+    0 14px 26px rgba(0, 0, 0, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.15),
     0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 }
