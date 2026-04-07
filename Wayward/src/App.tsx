@@ -386,8 +386,8 @@ function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean)
     accent1: toHex(primary),
     accent2: toHex(secondary),
     glow: toRgba(mixRgb(primary, secondary, 0.28), idle ? 0.24 : 0.42),
-    surface: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.82 : 0.74), idle ? 0.35 : 0.55),
-    surfaceStrong: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.72 : 0.62), idle ? 0.45 : 0.65),
+    surface: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.82 : 0.58), idle ? 0.35 : 0.50),
+    surfaceStrong: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.72 : 0.48), idle ? 0.45 : 0.58),
     border: toRgba(mixRgb(blend, LIGHT_RGB, idle ? 0.42 : 0.22), idle ? 0.25 : 0.35),
     textPrimary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.92), 0.98),
     textSecondary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.74), idle ? 0.65 : 0.82),
@@ -403,7 +403,7 @@ function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean)
     btnHoverBorder: toRgba(primary, 0.34),
     btnHoverShadow: toRgba(mixRgb(primary, secondary, 0.28), 0.34),
     ctrlHoverBorder: toRgba(primary, 0.24),
-    cardBg: toRgba(mixRgb(blend, { r: 10, g: 12, b: 18 }, 0.08), 0.58)
+    cardBg: toRgba(mixRgb(blend, { r: 10, g: 12, b: 18 }, 0.04), 0.52)
   };
 }
 
