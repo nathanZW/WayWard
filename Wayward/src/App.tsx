@@ -863,7 +863,6 @@ function renderSwipeCard(card: DeckCard, tabClassName: string, role: "left" | "c
             </span>
           ))}
         </div>
-        <p className="swipe-card-note">{card.note}</p>
       </div>
     </div>
   );
