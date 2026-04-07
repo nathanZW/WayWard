@@ -639,7 +639,6 @@
   transition:
     transform 220ms ease,
     opacity 220ms ease,
-    box-shadow 220ms ease,
     border-color 220ms ease,
     background 220ms ease;
 }
