@@ -163,9 +163,9 @@
 }
 
 .search-input:focus {
-  border-color: color-mix(in srgb, var(--accent-c1) 55%, transparent);
+  border-color: var(--search-focus-border);
   background: var(--surface-strong);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-c1) 24%, transparent);
+  box-shadow: 0 0 0 2px var(--search-focus-ring);
 }
 
 .esc-hint {
@@ -412,10 +412,10 @@
 
 .badge.active,
 .badge.mood {
-  background: color-mix(in srgb, var(--accent-c1) 22%, rgba(255, 255, 255, 0.08));
-  border-color: color-mix(in srgb, var(--accent-c1) 40%, transparent);
+  background: var(--badge-bg);
+  border-color: var(--badge-border);
   color: var(--accent-ink);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--accent-glow) 65%, transparent);
+  box-shadow: 0 0 14px var(--badge-shadow);
 }
 
 .badge.active.idle {
@@ -487,10 +487,10 @@
 }
 
 .play-pause-btn:hover {
-  background: color-mix(in srgb, var(--accent-c1) 18%, rgba(255, 255, 255, 0.12));
-  border-color: color-mix(in srgb, var(--accent-c1) 34%, transparent);
+  background: var(--btn-hover-bg);
+  border-color: var(--btn-hover-border);
   transform: scale(1.06);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent-glow) 80%, transparent);
+  box-shadow: 0 6px 18px var(--btn-hover-shadow);
 }
 
 .playback-control-btn {
@@ -503,7 +503,7 @@
 
 .playback-control-btn:hover {
   background: var(--surface-strong);
-  border-color: color-mix(in srgb, var(--accent-c1) 24%, transparent);
+  border-color: var(--ctrl-hover-border);
   transform: scale(1.06);
 }
 
@@ -624,7 +624,7 @@
   width: 100%;
   min-height: 122px;
   max-height: 156px;
-  background: color-mix(in srgb, var(--surface-tint) 92%, rgba(10, 12, 18, 0.92));
+  background: var(--card-bg);
   border-radius: 18px;
   border: 1px solid var(--surface-border);
   padding: 12px;

@@ -5,7 +5,7 @@ use windows::Storage::Streams::DataReader;
 use windows::Media::Control::{GlobalSystemMediaTransportControlsSession, GlobalSystemMediaTransportControlsSessionManager};
 use windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus;
 
-const VISIBLE_POLL_MS: u64 = 500;
+const VISIBLE_POLL_MS: u64 = 1000;
 const HIDDEN_POLL_MS: u64 = 3_000;
 
 #[derive(serde::Serialize, Clone, Debug)]

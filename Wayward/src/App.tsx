@@ -81,6 +81,16 @@ interface AccentTheme {
   accentInk: string;
   shadow: string;
   mood: string;
+  searchFocusBorder: string;
+  searchFocusRing: string;
+  badgeBg: string;
+  badgeBorder: string;
+  badgeShadow: string;
+  btnHoverBg: string;
+  btnHoverBorder: string;
+  btnHoverShadow: string;
+  ctrlHoverBorder: string;
+  cardBg: string;
 }
 
 interface DeckCard {
@@ -383,7 +393,17 @@ function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean)
     textSecondary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.74), idle ? 0.65 : 0.82),
     accentInk,
     shadow: toRgba(mixRgb(primary, DARK_RGB, 0.58), idle ? 0.35 : 0.55),
-    mood: describeMood(blend, idle)
+    mood: describeMood(blend, idle),
+    searchFocusBorder: toRgba(primary, 0.55),
+    searchFocusRing: toRgba(primary, 0.24),
+    badgeBg: toRgba(mixRgb(primary, { r: 255, g: 255, b: 255 }, 0.78), 0.28),
+    badgeBorder: toRgba(primary, 0.40),
+    badgeShadow: toRgba(mixRgb(primary, secondary, 0.28), 0.27),
+    btnHoverBg: toRgba(mixRgb(primary, { r: 255, g: 255, b: 255 }, 0.82), 0.28),
+    btnHoverBorder: toRgba(primary, 0.34),
+    btnHoverShadow: toRgba(mixRgb(primary, secondary, 0.28), 0.34),
+    ctrlHoverBorder: toRgba(primary, 0.24),
+    cardBg: toRgba(mixRgb(blend, { r: 10, g: 12, b: 18 }, 0.08), 0.58)
   };
 }
 
@@ -928,6 +948,16 @@ function App() {
     root.style.setProperty("--accent-shadow", accentTheme.shadow);
     root.style.setProperty("--text-primary", accentTheme.textPrimary);
     root.style.setProperty("--text-secondary", accentTheme.textSecondary);
+    root.style.setProperty("--search-focus-border", accentTheme.searchFocusBorder);
+    root.style.setProperty("--search-focus-ring", accentTheme.searchFocusRing);
+    root.style.setProperty("--badge-bg", accentTheme.badgeBg);
+    root.style.setProperty("--badge-border", accentTheme.badgeBorder);
+    root.style.setProperty("--badge-shadow", accentTheme.badgeShadow);
+    root.style.setProperty("--btn-hover-bg", accentTheme.btnHoverBg);
+    root.style.setProperty("--btn-hover-border", accentTheme.btnHoverBorder);
+    root.style.setProperty("--btn-hover-shadow", accentTheme.btnHoverShadow);
+    root.style.setProperty("--ctrl-hover-border", accentTheme.ctrlHoverBorder);
+    root.style.setProperty("--card-bg", accentTheme.cardBg);
   }, [accentTheme]);
 
   useEffect(() => {
