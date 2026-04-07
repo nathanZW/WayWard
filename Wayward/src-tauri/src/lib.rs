@@ -89,12 +89,12 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let ctrl_space = Shortcut::new(Some(Modifiers::CONTROL), Code::Space);
+    let alt_w = Shortcut::new(Some(Modifiers::ALT), Code::KeyW);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |app, shortcut, event| {
-                if shortcut == &ctrl_space && event.state() == ShortcutState::Pressed {
+                if shortcut == &alt_w && event.state() == ShortcutState::Pressed {
                     if let Some(window) = app.get_webview_window("main") {
                         let is_visible = window.is_visible().unwrap_or(false);
                         if is_visible {
@@ -117,7 +117,7 @@ pub fn run() {
         .setup(move |app| {
             load_local_env();
 
-            if let Err(e) = app.global_shortcut().register(ctrl_space) {
+            if let Err(e) = app.global_shortcut().register(alt_w) {
                 eprintln!("Failed to register global shortcut: {:?}", e);
             }
 

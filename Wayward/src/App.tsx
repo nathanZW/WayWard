@@ -1399,7 +1399,7 @@ function App() {
       </div>
 
       <div className="footer">
-        <div>Ctrl+Space to open</div>
+        <div>Alt+W to open</div>
         <div className="footer-icon">
           <PlusCircle size={14} /> Last.fm live data
         </div>
