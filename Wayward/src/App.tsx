@@ -1128,6 +1128,17 @@ function App() {
         && !event.ctrlKey
         && !event.metaKey
         && !event.altKey
+        && lowerKey === "o"
+      ) {
+        event.preventDefault();
+        setShowShortcuts((previous) => !previous);
+      }
+
+      if (
+        !typingInEditable
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.altKey
         && (lowerKey === "j" || lowerKey === "l")
       ) {
         if (activeTab === "Discover" && discoverCards.length > 1) {
@@ -1266,6 +1277,10 @@ function App() {
                   >
                     <X size={14} />
                   </button>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>O</kbd></div>
+                  <span>Toggle shortcuts</span>
                 </div>
                 <div className="shortcut-item">
                   <div className="shortcut-keys"><kbd>Space</kbd></div>
