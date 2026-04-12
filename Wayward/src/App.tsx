@@ -847,6 +847,7 @@ function renderSwipeCard(card: DeckCard, tabClassName: string, role: "left" | "c
             src={card.imageSrc}
             alt=""
             className="album-art-inner album-art-image"
+            decoding="async"
           />
         ) : (
           <div className="album-art-inner" />
@@ -1038,6 +1039,33 @@ function App() {
       window.clearTimeout(laneMotionTimeoutRef.current);
     }
   }, []);
+
+  // Preload deck images ahead of swipe to prevent art popping
+  useEffect(() => {
+    if (!lastfmContext) return;
+
+    const timeoutId = window.setTimeout(() => {
+      const preloadUrls = new Set<string>();
+
+      lastfmContext.similar_tracks.forEach((track) => {
+        if (track.image_url) preloadUrls.add(track.image_url);
+      });
+
+      lastfmContext.top_albums.forEach((album) => {
+        if (album.image_url) preloadUrls.add(album.image_url);
+      });
+
+      preloadUrls.forEach((url) => {
+        const img = new Image();
+        img.decoding = "async";
+        img.src = url;
+      });
+    }, 150);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [lastfmContext]);
 
   const handlePlayPause = useCallback(async () => {
     try {
@@ -1322,6 +1350,7 @@ function App() {
                 src={trackInfo.album_art}
                 alt="Album art"
                 className="album-art-inner album-art-image"
+                decoding="async"
               />
             ) : (
               <div className="album-art-inner" />
