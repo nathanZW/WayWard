@@ -558,7 +558,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, var(--accent-c1), var(--accent-c2));
+  background: var(--accent-c1);
   border-radius: 2px 2px 0 0;
   box-shadow: 0 -2px 8px var(--accent-glow);
   transition: background 1.2s ease, box-shadow 1.2s ease;
