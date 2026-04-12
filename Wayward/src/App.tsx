@@ -137,7 +137,11 @@ const OFF_WHITE_RGB: RGB = { r: 255, g: 250, b: 244 };
 let paletteContext: CanvasRenderingContext2D | null = null;
 
 function isNeutralTrack(track: TrackInfo): boolean {
-  return track.status === "Idle" && !track.title && !track.artist && !track.album_title;
+  return !track.title.trim()
+    && !track.artist.trim()
+    && !track.album_title.trim()
+    && !track.album_art
+    && track.duration <= 0;
 }
 
 function formatTime(secs: number): string {
@@ -674,8 +678,8 @@ function buildIdleCard(tab: AppTab, mood: string): DeckCard {
     tab,
     tab === "Queue"
       ? "Queue is parked until integrations land"
-      : "Start any track to wake Last.fm",
-    "Wayward will enrich the overlay from the current SMTC session.",
+      : "Start Apple Music, Amazon Music, Spotify, TIDAL, Deezer, or YouTube Music",
+    "Wayward is standing by for a supported music app.",
     [mood, "Standby"],
     "Once playback starts, Wayward will fetch similar tracks and artist album context from Last.fm.",
     null
@@ -1251,7 +1255,7 @@ function App() {
 
   const trackTitle = idleState ? "Nothing playing" : trackInfo.title;
   const trackSubtitle = idleState
-    ? "Waiting for a system media session"
+    ? "Waiting for a music stream"
     : [normalizedTrack.displayArtist || "Unknown artist", normalizedTrack.displayAlbum].filter(Boolean).join(" / ");
   const statusLabel = idleState ? "Ready" : trackInfo.status;
   const tabClassName = activeTab.toLowerCase().replace(/\s+/g, "-");

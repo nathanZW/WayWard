@@ -17,15 +17,8 @@ fn load_local_env() {
 
 #[command]
 async fn toggle_playback(app: AppHandle) -> Result<(), String> {
-    use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
-    
-    let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
-        .map_err(|e| format!("Failed to request manager: {:?}", e))?
-        .await
-        .map_err(|e| format!("Failed to get manager: {:?}", e))?;
-
-    let session = manager.GetCurrentSession()
-        .map_err(|e| format!("Failed to get current session: {:?}", e))?;
+    let manager = smtc::request_session_manager().await?;
+    let session = smtc::get_allowed_session(&manager)?;
 
     session.TryTogglePlayPauseAsync()
         .map_err(|e| format!("Failed to toggle: {:?}", e))?
@@ -40,15 +33,8 @@ async fn toggle_playback(app: AppHandle) -> Result<(), String> {
 
 #[command]
 async fn skip_next(app: AppHandle) -> Result<(), String> {
-    use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
-    
-    let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
-        .map_err(|e| format!("Failed to request manager: {:?}", e))?
-        .await
-        .map_err(|e| format!("Failed to get manager: {:?}", e))?;
-
-    let session = manager.GetCurrentSession()
-        .map_err(|e| format!("Failed to get current session: {:?}", e))?;
+    let manager = smtc::request_session_manager().await?;
+    let session = smtc::get_allowed_session(&manager)?;
 
     session.TrySkipNextAsync()
         .map_err(|e| format!("Failed to skip next: {:?}", e))?
@@ -62,15 +48,8 @@ async fn skip_next(app: AppHandle) -> Result<(), String> {
 
 #[command]
 async fn skip_previous(app: AppHandle) -> Result<(), String> {
-    use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
-    
-    let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
-        .map_err(|e| format!("Failed to request manager: {:?}", e))?
-        .await
-        .map_err(|e| format!("Failed to get manager: {:?}", e))?;
-
-    let session = manager.GetCurrentSession()
-        .map_err(|e| format!("Failed to get current session: {:?}", e))?;
+    let manager = smtc::request_session_manager().await?;
+    let session = smtc::get_allowed_session(&manager)?;
 
     session.TrySkipPreviousAsync()
         .map_err(|e| format!("Failed to skip previous: {:?}", e))?

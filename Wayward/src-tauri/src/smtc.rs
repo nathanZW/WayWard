@@ -7,6 +7,14 @@ use windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackSt
 
 const VISIBLE_POLL_MS: u64 = 1000;
 const HIDDEN_POLL_MS: u64 = 3_000;
+const ALLOWED_SOURCE_KEYWORDS: [&str; 6] = [
+    "applemusic",
+    "amazonmusic",
+    "spotify",
+    "tidal",
+    "deezer",
+    "youtubemusic",
+];
 
 #[derive(serde::Serialize, Clone, Debug)]
 pub struct TrackInfo {
@@ -33,6 +41,85 @@ impl TrackInfo {
             album_art: None,
         }
     }
+}
+
+fn normalize_source_app_id(source_app_id: &str) -> String {
+    source_app_id
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+fn is_allowed_source_app_id(source_app_id: &str) -> bool {
+    let normalized = normalize_source_app_id(source_app_id);
+    ALLOWED_SOURCE_KEYWORDS
+        .iter()
+        .any(|keyword| normalized.contains(keyword))
+}
+
+fn session_source_app_id(
+    session: &GlobalSystemMediaTransportControlsSession,
+) -> Option<String> {
+    session.SourceAppUserModelId().ok().map(|id| id.to_string())
+}
+
+fn session_is_allowed(session: &GlobalSystemMediaTransportControlsSession) -> bool {
+    session_source_app_id(session)
+        .map(|source_id| is_allowed_source_app_id(&source_id))
+        .unwrap_or(false)
+}
+
+fn select_allowed_session(
+    manager: &GlobalSystemMediaTransportControlsSessionManager,
+) -> Option<GlobalSystemMediaTransportControlsSession> {
+    if let Ok(current_session) = manager.GetCurrentSession() {
+        if session_is_allowed(&current_session) {
+            return Some(current_session);
+        }
+    }
+
+    let sessions = manager.GetSessions().ok()?;
+    let size = sessions.Size().ok()?;
+    let mut fallback_session: Option<GlobalSystemMediaTransportControlsSession> = None;
+
+    for index in 0..size {
+        let session = match sessions.GetAt(index) {
+            Ok(session) => session,
+            Err(_) => continue,
+        };
+
+        if !session_is_allowed(&session) {
+            continue;
+        }
+
+        if get_playback_status_str(&session) == "Playing" {
+            return Some(session);
+        }
+
+        if fallback_session.is_none() {
+            fallback_session = Some(session);
+        }
+    }
+
+    fallback_session
+}
+
+pub async fn request_session_manager(
+) -> Result<GlobalSystemMediaTransportControlsSessionManager, String> {
+    GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
+        .map_err(|e| format!("Failed to request manager: {:?}", e))?
+        .await
+        .map_err(|e| format!("Failed to get manager: {:?}", e))
+}
+
+pub fn get_allowed_session(
+    manager: &GlobalSystemMediaTransportControlsSessionManager,
+) -> Result<GlobalSystemMediaTransportControlsSession, String> {
+    select_allowed_session(manager).ok_or_else(|| {
+        "No allowed media session found for Apple Music, Amazon Music, Spotify, TIDAL, Deezer, or YouTube Music."
+            .to_string()
+    })
 }
 
 fn get_playback_status_str(session: &GlobalSystemMediaTransportControlsSession) -> &'static str {
@@ -92,17 +179,14 @@ async fn get_album_art_base64(session: GlobalSystemMediaTransportControlsSession
 /// Called from toggle_playback / skip commands to immediately emit the new state.
 /// This gives instant UI feedback without waiting for the next poll tick.
 pub async fn emit_current_state(app: &AppHandle) {
-    let manager = match GlobalSystemMediaTransportControlsSessionManager::RequestAsync() {
-        Ok(m) => match m.await {
-            Ok(mgr) => mgr,
-            Err(_) => return,
-        },
+    let manager = match request_session_manager().await {
+        Ok(manager) => manager,
         Err(_) => return,
     };
 
-    let session = match manager.GetCurrentSession() {
-        Ok(s) => s,
-        Err(_) => {
+    let session = match select_allowed_session(&manager) {
+        Some(session) => session,
+        None => {
             let _ = app.emit("smtc-update", TrackInfo::neutral());
             return;
         }
@@ -132,16 +216,10 @@ pub async fn emit_current_state(app: &AppHandle) {
 
 pub fn start_smtc_listener(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let manager = match GlobalSystemMediaTransportControlsSessionManager::RequestAsync() {
-            Ok(m) => match m.await {
-                Ok(mgr) => mgr,
-                Err(e) => {
-                    eprintln!("Failed to get session manager: {:?}", e);
-                    return;
-                }
-            },
-            Err(e) => {
-                eprintln!("Failed to request session manager: {:?}", e);
+        let manager = match request_session_manager().await {
+            Ok(manager) => manager,
+            Err(error) => {
+                eprintln!("{error}");
                 return;
             }
         };
@@ -152,7 +230,7 @@ pub fn start_smtc_listener(app: AppHandle) {
         let mut had_session = false;
 
         loop {
-            if let Ok(session) = manager.GetCurrentSession() {
+            if let Some(session) = select_allowed_session(&manager) {
                 had_session = true;
                 let status = get_playback_status_str(&session);
                 let (position, duration) = get_timeline(&session);
