@@ -1103,19 +1103,14 @@ function App() {
         await getCurrentWindow().hide();
       }
 
-      if (event.key === "ArrowLeft" || (event.ctrlKey && event.key === "+")) {
+      if (event.key === "ArrowLeft") {
         event.preventDefault();
         handleSkipPrevious();
       }
 
-      if (event.key === "ArrowRight" || (event.ctrlKey && event.key === "-")) {
+      if (event.key === "ArrowRight") {
         event.preventDefault();
         handleSkipNext();
-      }
-
-      if (event.key === "Enter" || (event.ctrlKey && event.key === "]")) {
-        event.preventDefault();
-        console.log("Queue track");
       }
 
       if (event.key === " " && !event.shiftKey && document.activeElement?.tagName !== "INPUT") {
@@ -1297,18 +1292,6 @@ function App() {
                   <span>Next track</span>
                 </div>
                 <div className="shortcut-item">
-                  <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>+</kbd></div>
-                  <span>Skip track</span>
-                </div>
-                <div className="shortcut-item">
-                  <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>-</kbd></div>
-                  <span>Save track</span>
-                </div>
-                <div className="shortcut-item">
-                  <div className="shortcut-keys"><kbd>Ctrl</kbd><kbd>]</kbd></div>
-                  <span>Queue track</span>
-                </div>
-                <div className="shortcut-item">
                   <div className="shortcut-keys"><kbd>1</kbd></div>
                   <span>Discover</span>
                 </div>
@@ -1318,11 +1301,11 @@ function App() {
                 </div>
                 <div className="shortcut-item">
                   <div className="shortcut-keys"><kbd>J</kbd></div>
-                  <span>Previous card in Discover / Albums</span>
+                  <span>Previous card</span>
                 </div>
                 <div className="shortcut-item">
                   <div className="shortcut-keys"><kbd>L</kbd></div>
-                  <span>Next card in Discover / Albums</span>
+                  <span>Next card</span>
                 </div>
               </div>
             </div>
