@@ -53,10 +53,6 @@
 }
 
 /* When the Tauri window is hidden, stop all compositing work.  */
-.container.is-hidden {
-  visibility: hidden;
-}
-
 .container.is-hidden * {
   animation-play-state: paused !important;
   transition: none !important;
