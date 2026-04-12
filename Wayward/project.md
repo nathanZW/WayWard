@@ -33,6 +33,7 @@ The core idea is an always-on-top, frameless window that the user can summon imm
    - Implement `MusicKit` JS to authenticate and play tracks directly from the overlay.
 3. **Advanced Framer Motion Deck**: 
    - Implement physical swipe-to-dismiss/save logic and physics for the card deck.
+4. **Queue Restoration**: The "Queue" tab is currently hidden in the UI; it will be added back once Spotify/Apple Music integration is complete to allow for full playback control.
 
 ## Agent Guidelines for Modifying this Project
 - **Tauri V2 Specifics**: Ensure you are using Tauri v2 plugin syntax when modifying Rust.

@@ -1162,10 +1162,12 @@ function App() {
         setActiveTab("Similar albums");
       }
 
+      /* Hidden until integration
       if (event.key === "3") {
         event.preventDefault();
         setActiveTab("Queue");
       }
+      */
     };
 
     const handleClickOutside = (event: MouseEvent) => {
@@ -1315,10 +1317,6 @@ function App() {
                   <span>Similar albums</span>
                 </div>
                 <div className="shortcut-item">
-                  <div className="shortcut-keys"><kbd>3</kbd></div>
-                  <span>Queue</span>
-                </div>
-                <div className="shortcut-item">
                   <div className="shortcut-keys"><kbd>J</kbd></div>
                   <span>Previous card in Discover / Albums</span>
                 </div>
@@ -1379,7 +1377,7 @@ function App() {
         </div>
 
         <div className="tabs">
-          {APP_TABS.map((tab) => (
+          {APP_TABS.filter(tab => tab !== "Queue").map((tab) => (
             <div
               key={tab}
               className={`tab ${activeTab === tab ? "active" : ""}`}
