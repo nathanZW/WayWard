@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Clipboard,
+  Check,
   Pause,
   Play,
   PlusCircle,
@@ -1029,7 +1031,13 @@ function isEditableElement(element: Element | null): boolean {
       || element.isContentEditable);
 }
 
-function renderSwipeCard(card: DeckCard, tabClassName: string, role: "left" | "center" | "right") {
+function renderSwipeCard(
+  card: DeckCard,
+  tabClassName: string,
+  role: "left" | "center" | "right",
+  onCopy?: () => void,
+  isCopied = false
+) {
   const isPreview = role !== "center";
 
   return (
@@ -1037,6 +1045,23 @@ function renderSwipeCard(card: DeckCard, tabClassName: string, role: "left" | "c
       className={`swipe-card ${tabClassName} ${role} ${isPreview ? "preview" : "center"}`}
       aria-hidden={isPreview}
     >
+      {!isPreview && tabClassName !== "queue" && (
+        <button
+          className={`swipe-card-copy-btn ${isCopied ? "is-copied" : ""}`}
+          type="button"
+          aria-label={isCopied ? "Copied" : "Copy active card"}
+          title={isCopied ? "Copied" : "Copy active card"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onCopy?.();
+          }}
+        >
+          <span className="swipe-card-copy-icon" aria-hidden="true">
+            <Clipboard size={14} className="swipe-card-copy-icon-base" />
+            <Check size={14} className="swipe-card-copy-icon-check" />
+          </span>
+        </button>
+      )}
       <div className="album-art album-art-large">
         {card.imageSrc ? (
           <img
@@ -1077,10 +1102,13 @@ function App() {
   const [laneMotion, setLaneMotion] = useState<{ tab: LaneTab; direction: LaneMotionDirection } | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [windowVisible, setWindowVisible] = useState(true);
+  const [copiedCardKey, setCopiedCardKey] = useState<string | null>(null);
   const shortcutsAreaRef = useRef<HTMLDivElement>(null);
   const shortcutsRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const lastfmCacheRef = useRef<Map<string, LastfmContext>>(new Map());
   const laneMotionTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const idleState = isNeutralTrack(trackInfo);
   const normalizedTrack = normalizeTrackMetadata(trackInfo);
@@ -1318,15 +1346,48 @@ function App() {
     triggerLaneMotion(tab, motionDirection);
   }, [albumCardIndex, albumCards.length, discoverCardIndex, discoverCards.length, triggerLaneMotion]);
 
+  const copyActiveCard = useCallback(async () => {
+    const targetCard = centerCard;
+    if (!targetCard) return;
+
+    try {
+      const copyText = `${targetCard.title} ${targetCard.subtitle}`;
+      await navigator.clipboard.writeText(copyText);
+      setCopiedCardKey(targetCard.key);
+
+      if (copyFeedbackTimeoutRef.current !== null) {
+        window.clearTimeout(copyFeedbackTimeoutRef.current);
+      }
+
+      copyFeedbackTimeoutRef.current = window.setTimeout(() => {
+        setCopiedCardKey(null);
+        copyFeedbackTimeoutRef.current = null;
+      }, 2000);
+    } catch (error) {
+      console.error("Failed to copy active card:", error);
+    }
+  }, [centerCard]);
+
+  useEffect(() => () => {
+    if (copyFeedbackTimeoutRef.current !== null) {
+      window.clearTimeout(copyFeedbackTimeoutRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
       const lowerKey = event.key.toLowerCase();
       const typingInEditable = isEditableElement(document.activeElement);
 
       if (event.key === "Escape") {
+        if (typingInEditable) {
+          setShowShortcuts(false);
+          return;
+        }
         setShowShortcuts(false);
         setWindowVisible(false);
         await getCurrentWindow().hide();
+        return;
       }
 
       if (event.key === "ArrowLeft") {
@@ -1383,6 +1444,17 @@ function App() {
         setActiveTab("Similar albums");
       }
 
+      if (
+        !typingInEditable
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.altKey
+        && lowerKey === "c"
+      ) {
+        event.preventDefault();
+        void copyActiveCard();
+      }
+
       /* Hidden until integration
       if (event.key === "3") {
         event.preventDefault();
@@ -1404,7 +1476,7 @@ function App() {
       window.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [activeTab, albumCards.length, discoverCards.length, handlePlayPause, handleSkipNext, handleSkipPrevious, navigateLane]);
+  }, [activeTab, albumCards.length, copyActiveCard, discoverCards.length, handlePlayPause, handleSkipNext, handleSkipPrevious, navigateLane]);
 
   useEffect(() => {
     const unlisten = listen<TrackInfo>("smtc-update", (event) => {
@@ -1468,9 +1540,17 @@ function App() {
           <div className="search-input-wrapper">
             <Search className="search-icon" size={18} />
             <input
+              ref={searchInputRef}
               className="search-input"
               placeholder="Search or ask for music..."
               autoFocus
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                event.preventDefault();
+                event.stopPropagation();
+                setShowShortcuts(false);
+                searchInputRef.current?.blur();
+              }}
             />
             <div className="esc-hint">ESC</div>
           </div>
@@ -1532,6 +1612,10 @@ function App() {
                 <div className="shortcut-item">
                   <div className="shortcut-keys"><kbd>L</kbd></div>
                   <span>Next card</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>C</kbd></div>
+                  <span>Copy active card</span>
                 </div>
               </div>
             </div>
@@ -1608,7 +1692,13 @@ function App() {
               )}
               <div className="swipe-card-slot center">
                 <div key={`${activeTab}-${centerCard.key}`} className="swipe-card-stage center">
-                  {renderSwipeCard(centerCard, tabClassName, "center")}
+                  {renderSwipeCard(
+                    centerCard,
+                    tabClassName,
+                    "center",
+                    copyActiveCard,
+                    copiedCardKey === centerCard.key
+                  )}
                 </div>
               </div>
               {rightPreviewCard && (
