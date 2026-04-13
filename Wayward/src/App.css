@@ -310,8 +310,9 @@
 .now-playing-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 12px 14px;
+  min-height: 92px;
   background: var(--surface-tint);
   border: 1px solid var(--surface-border);
   border-radius: 16px;
@@ -332,9 +333,9 @@
 /* ── Album Art ─────────────────────────────────────────────── */
 
 .album-art {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
   background: linear-gradient(135deg, var(--accent-c1), var(--accent-c2));
   display: flex;
   align-items: center;
@@ -369,7 +370,7 @@
 }
 
 .track-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   margin: 0;
   white-space: nowrap;
@@ -378,7 +379,7 @@
 }
 
 .track-artist {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
   margin: 0;
   white-space: nowrap;
@@ -389,8 +390,8 @@
 .track-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 12px;
 }
 
 /* ── Badges ────────────────────────────────────────────────── */
@@ -406,7 +407,7 @@
   border: 1px solid var(--surface-border);
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-secondary);
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -432,27 +433,21 @@
   color: rgba(255, 255, 255, 0.98);
 }
 
-.now-playing-card .badge.mood {
-  background: var(--badge-muted-bg);
-  border-color: var(--badge-muted-border);
-  color: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 0 12px var(--badge-shadow);
-}
-
 /* ── Progress Bar ──────────────────────────────────────────── */
 
 .progress-bar-container {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 9px;
+  gap: 5px;
+  font-size: 10px;
   color: var(--text-secondary);
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .progress-bar {
   flex: 1;
-  height: 4px;
+  height: 5px;
   background: rgba(255, 255, 255, 0.18);
   border-radius: 2px;
   overflow: hidden;
@@ -492,8 +487,8 @@
 }
 
 .play-pause-btn {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--surface-strong);
   border: 1px solid var(--surface-border);
@@ -857,22 +852,14 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
   flex: 1;
 }
 
-.swipe-card-eyebrow {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.92);
-}
-
 .swipe-card-title {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -882,7 +869,7 @@
 
 .swipe-card-artist {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.86);
   white-space: nowrap;
   overflow: hidden;
@@ -893,6 +880,7 @@
   background: var(--badge-muted-bg);
   border-color: var(--badge-muted-border);
   color: rgba(255, 255, 255, 0.98);
+  font-size: 11px;
   box-shadow: 0 0 12px var(--badge-shadow);
 }
 

@@ -1075,7 +1075,6 @@ function renderSwipeCard(
         )}
       </div>
       <div className="swipe-card-content">
-        <span className="swipe-card-eyebrow">{card.eyebrow}</span>
         <h3 className="swipe-card-title">{card.title}</h3>
         <p className="swipe-card-artist">{card.subtitle}</p>
         <div className="badges">
@@ -1644,7 +1643,6 @@ function App() {
             <div className="track-meta">
               <div className="badges">
                 <span className={`badge active ${idleState ? "idle" : ""}`}>{statusLabel}</span>
-                <span className="badge mood">{accentTheme.mood}</span>
               </div>
               <div className="progress-bar-container">
                 <span>{formatTime(trackInfo.position)}</span>
