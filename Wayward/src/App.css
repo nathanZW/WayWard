@@ -32,8 +32,8 @@
 .container {
   position: relative;
   width: 100%;
-  min-height: 100vh;
   height: 100vh;
+  max-height: 100vh;
   border-radius: 8px;
   background: rgba(8, 10, 14, 0.38);
   display: flex;
@@ -299,7 +299,8 @@
   display: flex;
   flex-direction: column;
   padding: 8px 14px 6px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   gap: 8px;
   min-height: 0;
 }
