@@ -20,6 +20,11 @@
   --accent-shadow: rgba(10, 12, 18, 0.35);
   --text-primary: rgba(255, 250, 244, 0.98);
   --text-secondary: rgba(255, 250, 244, 0.62);
+  --badge-bg: rgba(92, 52, 24, 0.68);
+  --badge-muted-bg: rgba(72, 42, 22, 0.6);
+  --badge-border: rgba(185, 124, 70, 0.78);
+  --badge-muted-border: rgba(166, 112, 66, 0.68);
+  --badge-shadow: rgba(92, 52, 24, 0.28);
 }
 
 /* ── Container ─────────────────────────────────────────────── */
@@ -349,6 +354,7 @@
 
 .album-art-image {
   animation: albumArtFadeIn 220ms ease;
+  filter: saturate(1.30) contrast(1.03) brightness(1.05);
 }
 
 /* ── Track Info ─────────────────────────────────────────────── */
@@ -426,10 +432,10 @@
 }
 
 .now-playing-card .badge.mood {
-  background: var(--surface-strong);
-  border-color: var(--surface-border);
-  color: var(--text-secondary);
-  box-shadow: none;
+  background: var(--badge-muted-bg);
+  border-color: var(--badge-muted-border);
+  color: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 0 12px var(--badge-shadow);
 }
 
 /* ── Progress Bar ──────────────────────────────────────────── */
@@ -804,12 +810,20 @@
 }
 
 .swipe-card .badge {
-  color: rgba(255, 255, 255, 0.84);
+  background: var(--badge-muted-bg);
+  border-color: var(--badge-muted-border);
+  color: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 0 12px var(--badge-shadow);
 }
 
-.swipe-card .badge.active,
-.swipe-card .badge.mood {
-  color: rgba(255, 255, 255, 0.98);
+.swipe-card .badge.primary {
+  background: var(--badge-bg);
+  border-color: var(--badge-border);
+}
+
+.swipe-card .badge.secondary {
+  background: var(--badge-muted-bg);
+  border-color: var(--badge-muted-border);
 }
 
 /* ── Footer ────────────────────────────────────────────────── */

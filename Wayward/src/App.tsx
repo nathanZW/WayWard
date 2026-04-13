@@ -63,10 +63,36 @@ interface RGB {
   b: number;
 }
 
+interface ColourBucketAnalysis {
+  colour: RGB;
+  score: number;
+  saturation: number;
+  brightness: number;
+}
+
+interface ColourAnalysis {
+  totalPixels: number;
+  sampledPixels: number;
+  acceptedPixels: number;
+  rejectedPixels: number;
+  rejectionRate: number;
+  averageSaturation: number;
+  weightedAverageSaturation: number;
+  averageBrightness: number;
+  averageAlpha: number;
+  topBuckets: ColourBucketAnalysis[];
+}
+
 interface HSL {
   h: number;
   s: number;
   l: number;
+}
+
+interface BadgeStyle {
+  background: string;
+  border: string;
+  shadow: string;
 }
 
 interface AccentTheme {
@@ -84,7 +110,9 @@ interface AccentTheme {
   searchFocusBorder: string;
   searchFocusRing: string;
   badgeBg: string;
+  badgeMutedBg: string;
   badgeBorder: string;
+  badgeMutedBorder: string;
   badgeShadow: string;
   btnHoverBg: string;
   btnHoverBorder: string;
@@ -129,10 +157,18 @@ const NEUTRAL_TRACK: TrackInfo = {
 const NEUTRAL_ACCENT: [string, string] = ["#f2ede4", "#d7d1c8"];
 const LIVE_FALLBACK_ACCENT: [string, string] = ["#8b5cf6", "#ec4899"];
 const SAMPLE_SIZE = 24;
+const LIVE_SATURATION_BOOST = 0.16;
+const LIVE_LIGHTNESS_BOOST = 0.03;
+const COLOR_DEBUG_ENABLED = Boolean(
+  typeof window !== "undefined"
+  && window.localStorage.getItem("wayward.debugColor") === "1"
+);
 
 const DARK_RGB: RGB = { r: 13, g: 15, b: 20 };
 const LIGHT_RGB: RGB = { r: 248, g: 244, b: 236 };
 const OFF_WHITE_RGB: RGB = { r: 255, g: 250, b: 244 };
+const BADGE_TEXT_MIN_CONTRAST = 4.5;
+const BADGE_SURFACE_MIN_CONTRAST = 1.18;
 
 let paletteContext: CanvasRenderingContext2D | null = null;
 
@@ -185,6 +221,15 @@ function mixRgb(from: RGB, to: RGB, amount: number): RGB {
     r: from.r + (to.r - from.r) * ratio,
     g: from.g + (to.g - from.g) * ratio,
     b: from.b + (to.b - from.b) * ratio
+  };
+}
+
+function compositeRgb(backdrop: RGB, overlay: RGB, alpha: number): RGB {
+  const opacity = clamp(alpha, 0, 1);
+  return {
+    r: overlay.r * opacity + backdrop.r * (1 - opacity),
+    g: overlay.g * opacity + backdrop.g * (1 - opacity),
+    b: overlay.b * opacity + backdrop.b * (1 - opacity)
   };
 }
 
@@ -302,21 +347,23 @@ function getWarmth(rgb: RGB): number {
 
 function normalizeAccent(rgb: RGB, idle: boolean): RGB {
   const hsl = rgbToHsl(rgb);
-  const minimumSaturation = idle ? 0.06 : 0.24;
-  const maximumSaturation = idle ? 0.24 : 0.82;
-  const minimumLightness = idle ? 0.72 : 0.36;
-  const maximumLightness = idle ? 0.9 : 0.64;
+  const minimumSaturation = idle ? 0.06 : 0.3;
+  const maximumSaturation = idle ? 0.24 : 0.92;
+  const minimumLightness = idle ? 0.72 : 0.34;
+  const maximumLightness = idle ? 0.9 : 0.68;
+  const saturationBoost = idle ? 0 : LIVE_SATURATION_BOOST;
+  const lightnessBoost = idle ? 0 : LIVE_LIGHTNESS_BOOST;
 
   return hslToRgb({
     h: hsl.h,
     s: clamp(
       hsl.s < minimumSaturation
-        ? minimumSaturation + (hsl.s * 0.35)
-        : hsl.s,
+        ? minimumSaturation + (hsl.s * 0.45)
+        : hsl.s + saturationBoost,
       minimumSaturation,
       maximumSaturation
     ),
-    l: clamp(hsl.l, minimumLightness, maximumLightness)
+    l: clamp(hsl.l + lightnessBoost, minimumLightness, maximumLightness)
   });
 }
 
@@ -373,6 +420,51 @@ function describeMood(rgb: RGB, idle: boolean): string {
   return "Midnight glow";
 }
 
+function createContrastAwareBadgeStyle(
+  base: RGB,
+  surface: RGB,
+  primary: RGB,
+  secondary: RGB,
+  options?: {
+    minimumTextContrast?: number;
+    minimumSurfaceContrast?: number;
+    minimumAlpha?: number;
+    maximumAlpha?: number;
+  }
+): BadgeStyle {
+  const minimumTextContrast = options?.minimumTextContrast ?? BADGE_TEXT_MIN_CONTRAST;
+  const minimumSurfaceContrast = options?.minimumSurfaceContrast ?? BADGE_SURFACE_MIN_CONTRAST;
+  const minimumAlpha = options?.minimumAlpha ?? 0.32;
+  const maximumAlpha = options?.maximumAlpha ?? 0.82;
+  const darknessSteps = [0, 0.08, 0.16, 0.24, 0.32, 0.42, 0.52, 0.62];
+
+  let selectedFill = mixRgb(base, DARK_RGB, 0.42);
+  let selectedAlpha = maximumAlpha;
+
+  outer: for (const darkness of darknessSteps) {
+    const fill = darkness === 0 ? base : mixRgb(base, DARK_RGB, darkness);
+
+    for (let alpha = minimumAlpha; alpha <= maximumAlpha + 0.001; alpha += 0.06) {
+      const visibleFill = compositeRgb(surface, fill, alpha);
+
+      if (
+        getContrastRatio(visibleFill, OFF_WHITE_RGB) >= minimumTextContrast
+        && getContrastRatio(visibleFill, surface) >= minimumSurfaceContrast
+      ) {
+        selectedFill = fill;
+        selectedAlpha = alpha;
+        break outer;
+      }
+    }
+  }
+
+  return {
+    background: toRgba(selectedFill, selectedAlpha),
+    border: toRgba(mixRgb(selectedFill, primary, 0.36), clamp(selectedAlpha + 0.1, 0.42, 0.92)),
+    shadow: toRgba(mixRgb(selectedFill, secondary, 0.22), clamp(selectedAlpha * 0.5, 0.18, 0.38))
+  };
+}
+
 function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean): AccentTheme {
   const primary = normalizeAccent(primaryInput, idle);
   let secondary = normalizeAccent(secondaryInput, idle);
@@ -381,7 +473,29 @@ function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean)
     secondary = deriveSecondaryAccent(primary, [secondaryInput], idle);
   }
 
-  const blend = mixRgb(primary, secondary, 0.42);
+  const blend = mixRgb(primary, secondary, idle ? 0.42 : 0.34);
+  const surfaceBase = mixRgb(blend, DARK_RGB, idle ? 0.82 : 0.48);
+  const badgeStyle = createContrastAwareBadgeStyle(
+    mixRgb(primary, { r: 255, g: 255, b: 255 }, 0.7),
+    surfaceBase,
+    primary,
+    secondary,
+    {
+      minimumAlpha: idle ? 0.24 : 0.32,
+      maximumAlpha: idle ? 0.68 : 0.82
+    }
+  );
+  const badgeMutedStyle = createContrastAwareBadgeStyle(
+    mixRgb(blend, { r: 255, g: 255, b: 255 }, idle ? 0.68 : 0.62),
+    surfaceBase,
+    secondary,
+    primary,
+    {
+      minimumSurfaceContrast: 1.12,
+      minimumAlpha: idle ? 0.22 : 0.28,
+      maximumAlpha: idle ? 0.62 : 0.76
+    }
+  );
   const accentInk = getContrastRatio(blend, LIGHT_RGB) >= getContrastRatio(blend, DARK_RGB)
     ? toHex(LIGHT_RGB)
     : toHex(DARK_RGB);
@@ -389,25 +503,27 @@ function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean)
   return {
     accent1: toHex(primary),
     accent2: toHex(secondary),
-    glow: toRgba(mixRgb(primary, secondary, 0.28), idle ? 0.24 : 0.42),
-    surface: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.82 : 0.58), idle ? 0.35 : 0.50),
-    surfaceStrong: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.72 : 0.48), idle ? 0.45 : 0.58),
-    border: toRgba(mixRgb(blend, LIGHT_RGB, idle ? 0.42 : 0.22), idle ? 0.25 : 0.35),
-    textPrimary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.92), 0.98),
-    textSecondary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.74), idle ? 0.65 : 0.82),
+    glow: toRgba(mixRgb(primary, secondary, 0.32), idle ? 0.24 : 0.46),
+    surface: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.82 : 0.48), idle ? 0.35 : 0.46),
+    surfaceStrong: toRgba(mixRgb(blend, DARK_RGB, idle ? 0.72 : 0.38), idle ? 0.45 : 0.54),
+    border: toRgba(mixRgb(blend, LIGHT_RGB, idle ? 0.42 : 0.18), idle ? 0.25 : 0.3),
+    textPrimary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.88), 0.98),
+    textSecondary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.68), idle ? 0.65 : 0.82),
     accentInk,
     shadow: toRgba(mixRgb(primary, DARK_RGB, 0.58), idle ? 0.35 : 0.55),
     mood: describeMood(blend, idle),
-    searchFocusBorder: toRgba(primary, 0.55),
-    searchFocusRing: toRgba(primary, 0.24),
-    badgeBg: toRgba(mixRgb(primary, { r: 255, g: 255, b: 255 }, 0.78), 0.28),
-    badgeBorder: toRgba(primary, 0.40),
-    badgeShadow: toRgba(mixRgb(primary, secondary, 0.28), 0.27),
-    btnHoverBg: toRgba(mixRgb(primary, { r: 255, g: 255, b: 255 }, 0.82), 0.28),
-    btnHoverBorder: toRgba(primary, 0.34),
-    btnHoverShadow: toRgba(mixRgb(primary, secondary, 0.28), 0.34),
-    ctrlHoverBorder: toRgba(primary, 0.24),
-    cardBg: toRgba(mixRgb(blend, { r: 10, g: 12, b: 18 }, 0.04), 0.52)
+    searchFocusBorder: toRgba(primary, 0.62),
+    searchFocusRing: toRgba(primary, 0.28),
+    badgeBg: badgeStyle.background,
+    badgeMutedBg: badgeMutedStyle.background,
+    badgeBorder: badgeStyle.border,
+    badgeMutedBorder: badgeMutedStyle.border,
+    badgeShadow: badgeStyle.shadow,
+    btnHoverBg: toRgba(mixRgb(primary, { r: 255, g: 255, b: 255 }, 0.76), 0.32),
+    btnHoverBorder: toRgba(primary, 0.38),
+    btnHoverShadow: toRgba(mixRgb(primary, secondary, 0.3), 0.38),
+    ctrlHoverBorder: toRgba(primary, 0.28),
+    cardBg: toRgba(mixRgb(blend, { r: 10, g: 12, b: 18 }, 0.02), 0.56)
   };
 }
 
@@ -449,10 +565,19 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
       const data = context.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE).data;
 
       const buckets = new Map<string, { r: number; g: number; b: number; weight: number; hits: number }>();
+      let acceptedPixels = 0;
+      let rejectedPixels = 0;
+      let saturationSum = 0;
+      let weightedSaturationSum = 0;
+      let brightnessSum = 0;
+      let alphaSum = 0;
 
       for (let index = 0; index < data.length; index += 4) {
         const alpha = data[index + 3] / 255;
-        if (alpha < 0.6) continue;
+        if (alpha < 0.6) {
+          rejectedPixels += 1;
+          continue;
+        }
 
         const pixel = {
           r: data[index],
@@ -463,8 +588,14 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
         const brightness = (pixel.r + pixel.g + pixel.b) / 3;
         const saturation = getSaturation(pixel);
 
-        if (brightness < 18 || brightness > 238) continue;
-        if (brightness > 215 && saturation < 0.12) continue;
+        if (brightness < 18 || brightness > 238) {
+          rejectedPixels += 1;
+          continue;
+        }
+        if (brightness > 215 && saturation < 0.12) {
+          rejectedPixels += 1;
+          continue;
+        }
 
         const key = [
           Math.round(pixel.r / 18) * 18,
@@ -472,8 +603,13 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
           Math.round(pixel.b / 18) * 18
         ].join(",");
 
-        const weight = 1 + saturation * 4 + Math.abs(brightness - 128) / 128 + alpha;
+        const weight = 0.75 + saturation * 6.2 + Math.abs(brightness - 128) / 192 + alpha * 0.8;
         const bucket = buckets.get(key);
+        acceptedPixels += 1;
+        saturationSum += saturation;
+        weightedSaturationSum += saturation * weight;
+        brightnessSum += brightness;
+        alphaSum += alpha;
 
         if (bucket) {
           bucket.r += pixel.r;
@@ -508,6 +644,24 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
         return;
       }
 
+      const analysis: ColourAnalysis = {
+        totalPixels: data.length / 4,
+        sampledPixels: acceptedPixels + rejectedPixels,
+        acceptedPixels,
+        rejectedPixels,
+        rejectionRate: (rejectedPixels / Math.max(acceptedPixels + rejectedPixels, 1)),
+        averageSaturation: saturationSum / Math.max(acceptedPixels, 1),
+        weightedAverageSaturation: weightedSaturationSum / Math.max(acceptedPixels, 1),
+        averageBrightness: brightnessSum / Math.max(acceptedPixels, 1),
+        averageAlpha: alphaSum / Math.max(acceptedPixels, 1),
+        topBuckets: ranked.slice(0, 5).map((entry) => ({
+          colour: entry.colour,
+          score: entry.score,
+          saturation: rgbToHsl(entry.colour).s,
+          brightness: rgbToHsl(entry.colour).l
+        }))
+      };
+
       const primary = ranked[0].colour;
       const secondaryCandidate = ranked
         .slice(1)
@@ -523,7 +677,7 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
             colour,
             score:
               entry.score * 0.35 +
-              colourHsl.s * 3.1 +
+              colourHsl.s * 3.8 +
               hueDistance * 1.8 +
               contrast * 2.2 +
               warmth * 1.5 +
@@ -533,6 +687,44 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
         .sort((left, right) => right.score - left.score)[0]?.colour;
 
       const secondary = secondaryCandidate ?? deriveSecondaryAccent(primary, [], false);
+
+      if (COLOR_DEBUG_ENABLED) {
+        const primaryTheme = normalizeAccent(primary, false);
+        const secondaryTheme = normalizeAccent(secondary, false);
+        const primaryHsl = rgbToHsl(primary);
+        const secondaryHsl = rgbToHsl(secondary);
+        const primaryThemeHsl = rgbToHsl(primaryTheme);
+        const secondaryThemeHsl = rgbToHsl(secondaryTheme);
+
+        console.groupCollapsed("[Wayward] colour analysis");
+        console.table({
+          accepted_pixels: analysis.acceptedPixels,
+          rejected_pixels: analysis.rejectedPixels,
+          rejection_rate: Number(analysis.rejectionRate.toFixed(3)),
+          raw_avg_saturation: Number(analysis.averageSaturation.toFixed(3)),
+          raw_weighted_saturation: Number(analysis.weightedAverageSaturation.toFixed(3)),
+          raw_avg_brightness: Number(analysis.averageBrightness.toFixed(1)),
+          raw_avg_alpha: Number(analysis.averageAlpha.toFixed(3)),
+          primary_saturation: Number(primaryHsl.s.toFixed(3)),
+          primary_lightness: Number(primaryHsl.l.toFixed(3)),
+          primary_theme_saturation: Number(primaryThemeHsl.s.toFixed(3)),
+          primary_theme_lightness: Number(primaryThemeHsl.l.toFixed(3)),
+          secondary_saturation: Number(secondaryHsl.s.toFixed(3)),
+          secondary_lightness: Number(secondaryHsl.l.toFixed(3)),
+          secondary_theme_saturation: Number(secondaryThemeHsl.s.toFixed(3)),
+          secondary_theme_lightness: Number(secondaryThemeHsl.l.toFixed(3))
+        });
+        console.table(
+          analysis.topBuckets.map((bucket, index) => ({
+            rank: index + 1,
+            colour: toHex(bucket.colour),
+            score: Number(bucket.score.toFixed(3)),
+            saturation: Number(bucket.saturation.toFixed(3)),
+            brightness: Number(bucket.brightness.toFixed(3))
+          }))
+        );
+        console.groupEnd();
+      }
 
       resolve([primary, secondary]);
     };
@@ -863,7 +1055,7 @@ function renderSwipeCard(card: DeckCard, tabClassName: string, role: "left" | "c
         <p className="swipe-card-artist">{card.subtitle}</p>
         <div className="badges">
           {card.badges.map((badge, index) => (
-            <span key={`${card.key}-${badge}-${index}`} className={`badge ${index === 0 ? "mood" : ""}`}>
+            <span key={`${card.key}-${badge}-${index}`} className={`badge ${index === 0 ? "primary" : "secondary"}`}>
               {badge}
             </span>
           ))}
@@ -955,7 +1147,9 @@ function App() {
     root.style.setProperty("--search-focus-border", accentTheme.searchFocusBorder);
     root.style.setProperty("--search-focus-ring", accentTheme.searchFocusRing);
     root.style.setProperty("--badge-bg", accentTheme.badgeBg);
+    root.style.setProperty("--badge-muted-bg", accentTheme.badgeMutedBg);
     root.style.setProperty("--badge-border", accentTheme.badgeBorder);
+    root.style.setProperty("--badge-muted-border", accentTheme.badgeMutedBorder);
     root.style.setProperty("--badge-shadow", accentTheme.badgeShadow);
     root.style.setProperty("--btn-hover-bg", accentTheme.btnHoverBg);
     root.style.setProperty("--btn-hover-border", accentTheme.btnHoverBorder);
