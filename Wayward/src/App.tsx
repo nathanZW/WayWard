@@ -85,6 +85,12 @@ interface ColourAnalysis {
   topBuckets: ColourBucketAnalysis[];
 }
 
+interface ExtractedPalette {
+  primary: RGB;
+  secondary: RGB;
+  analysis: ColourAnalysis | null;
+}
+
 interface HSL {
   h: number;
   s: number;
@@ -171,6 +177,24 @@ const LIGHT_RGB: RGB = { r: 248, g: 244, b: 236 };
 const OFF_WHITE_RGB: RGB = { r: 255, g: 250, b: 244 };
 const BADGE_TEXT_MIN_CONTRAST = 4.5;
 const BADGE_SURFACE_MIN_CONTRAST = 1.18;
+const MOOD_IDLE_LABEL = "Soft focus";
+const MOOD_SHADOW_LUMINANCE_MAX = 0.2;
+const MOOD_DARK_LUMINANCE_MAX = 0.28;
+const MOOD_BRIGHT_LUMINANCE_MIN = 0.56;
+const MOOD_MUTED_SATURATION_MAX = 0.18;
+const MOOD_VIBRANT_SATURATION_MIN = 0.46;
+const MOOD_BRIGHT_SATURATION_MIN = 0.34;
+const MOOD_VIVID_SATURATION_MIN = 0.58;
+const MOOD_MID_BRIGHTNESS_MIN = 0.34;
+const MOOD_MID_BRIGHTNESS_MAX = 0.54;
+const MOOD_WARMTH_MIN = 0.12;
+const MOOD_COOLNESS_MAX = -0.06;
+const MOOD_WARM_HUE_MIN = 18;
+const MOOD_WARM_HUE_MAX = 72;
+const MOOD_COOL_HUE_MIN = 185;
+const MOOD_COOL_HUE_MAX = 255;
+const MOOD_HUE_SEPARATION_MIN = 72;
+const MOOD_DUAL_TONE_SATURATION_MIN = 0.38;
 
 let paletteContext: CanvasRenderingContext2D | null = null;
 
@@ -347,6 +371,14 @@ function getWarmth(rgb: RGB): number {
   return clamp(warmth, -1, 1);
 }
 
+function isWarmHue(hue: number): boolean {
+  return hue >= MOOD_WARM_HUE_MIN && hue <= MOOD_WARM_HUE_MAX;
+}
+
+function isCoolHue(hue: number): boolean {
+  return hue >= MOOD_COOL_HUE_MIN && hue <= MOOD_COOL_HUE_MAX;
+}
+
 function normalizeAccent(rgb: RGB, idle: boolean): RGB {
   const hsl = rgbToHsl(rgb);
   const minimumSaturation = idle ? 0.06 : 0.3;
@@ -409,17 +441,65 @@ function deriveSecondaryAccent(primary: RGB, candidates: RGB[], idle: boolean): 
   }), idle);
 }
 
-function describeMood(rgb: RGB, idle: boolean): string {
-  if (idle) return "Soft focus";
+function describeMood(primary: RGB, secondary: RGB, analysis: ColourAnalysis | null, idle: boolean): string {
+  if (idle) return MOOD_IDLE_LABEL;
 
-  const luminance = getLuminance(rgb);
-  const saturation = getSaturation(rgb);
+  const primaryHsl = rgbToHsl(primary);
+  const secondaryHsl = rgbToHsl(secondary);
+  const primaryWarmth = getWarmth(primary);
+  const secondaryWarmth = getWarmth(secondary);
+  const averageWarmth = (primaryWarmth + secondaryWarmth) / 2;
+  const averageSaturation = analysis?.weightedAverageSaturation ?? ((primaryHsl.s + secondaryHsl.s) / 2);
+  const averageBrightness = analysis
+    ? analysis.averageBrightness / 255
+    : (primaryHsl.l + secondaryHsl.l) / 2;
+  const hueDistance = getHueDistance(primaryHsl.h, secondaryHsl.h);
+  const warmHue = isWarmHue(primaryHsl.h) || isWarmHue(secondaryHsl.h);
+  const coolHue = isCoolHue(primaryHsl.h) || isCoolHue(secondaryHsl.h);
+  const warmTone = warmHue || averageWarmth >= MOOD_WARMTH_MIN;
+  const coolTone = coolHue || averageWarmth <= MOOD_COOLNESS_MAX;
 
-  if (saturation > 0.54 && luminance < 0.3) return "Velvet neon";
-  if (saturation > 0.45 && luminance > 0.5) return "Sunlit pulse";
-  if (saturation < 0.24 && luminance > 0.48) return "Airy haze";
-  if (luminance < 0.22) return "After-hours";
-  return "Midnight glow";
+  if (averageSaturation >= MOOD_VIBRANT_SATURATION_MIN && averageBrightness <= MOOD_DARK_LUMINANCE_MAX) {
+    if (hueDistance >= MOOD_HUE_SEPARATION_MIN) return "Neon";
+    return warmTone ? "Fired Up" : "Wired";
+  }
+
+  if (averageSaturation >= MOOD_BRIGHT_SATURATION_MIN && averageBrightness >= MOOD_BRIGHT_LUMINANCE_MIN) {
+    if (hueDistance >= MOOD_HUE_SEPARATION_MIN) return "Pop";
+    if (warmTone && averageSaturation < MOOD_VIVID_SATURATION_MIN) return "Bright Side";
+    if (!warmTone && averageSaturation >= MOOD_VIVID_SATURATION_MIN) return "Vivid";
+    return warmTone ? "Bright Side" : "Vivid";
+  }
+
+  if (averageSaturation <= MOOD_MUTED_SATURATION_MAX) {
+    if (averageBrightness >= MOOD_BRIGHT_LUMINANCE_MIN) {
+      return coolTone ? "Cool Down" : "Open";
+    }
+
+    if (averageBrightness <= MOOD_SHADOW_LUMINANCE_MAX) {
+      return coolTone ? "After Dark" : "Wind Down";
+    }
+
+    return warmTone ? "Easy" : "Soft";
+  }
+
+  if (averageBrightness <= MOOD_SHADOW_LUMINANCE_MAX) {
+    return coolTone ? "After Dark" : "Wind Down";
+  }
+
+  if (warmTone && averageBrightness >= MOOD_MID_BRIGHTNESS_MIN && averageBrightness <= MOOD_MID_BRIGHTNESS_MAX) {
+    return "Easy";
+  }
+
+  if (coolTone && averageBrightness <= MOOD_BRIGHT_LUMINANCE_MIN) {
+    return "Cool Down";
+  }
+
+  if (hueDistance >= MOOD_HUE_SEPARATION_MIN && averageSaturation >= MOOD_DUAL_TONE_SATURATION_MIN) {
+    return "Pop";
+  }
+
+  return averageBrightness >= MOOD_BRIGHT_LUMINANCE_MIN ? "Bright Side" : "After Dark";
 }
 
 function createContrastAwareBadgeStyle(
@@ -467,7 +547,7 @@ function createContrastAwareBadgeStyle(
   };
 }
 
-function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean): AccentTheme {
+function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, analysis: ColourAnalysis | null, idle: boolean): AccentTheme {
   const primary = normalizeAccent(primaryInput, idle);
   let secondary = normalizeAccent(secondaryInput, idle);
 
@@ -513,7 +593,7 @@ function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean)
     textSecondary: toRgba(mixRgb(blend, OFF_WHITE_RGB, 0.68), idle ? 0.65 : 0.82),
     accentInk,
     shadow: toRgba(mixRgb(primary, DARK_RGB, 0.58), idle ? 0.35 : 0.55),
-    mood: describeMood(blend, idle),
+    mood: describeMood(primary, secondary, analysis, idle),
     searchFocusBorder: toRgba(primary, 0.62),
     searchFocusRing: toRgba(primary, 0.28),
     badgeBg: badgeStyle.background,
@@ -530,7 +610,7 @@ function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, idle: boolean)
 }
 
 function createThemeFromHex(accents: [string, string], idle: boolean): AccentTheme {
-  return buildAccentTheme(hexToRgb(accents[0]), hexToRgb(accents[1]), idle);
+  return buildAccentTheme(hexToRgb(accents[0]), hexToRgb(accents[1]), null, idle);
 }
 
 function getPaletteContext(): CanvasRenderingContext2D | null {
@@ -544,7 +624,7 @@ function getPaletteContext(): CanvasRenderingContext2D | null {
   return paletteContext;
 }
 
-function extractColours(src: string): Promise<[RGB, RGB]> {
+function extractColours(src: string): Promise<ExtractedPalette> {
   const fallback: [RGB, RGB] = [
     hexToRgb(LIVE_FALLBACK_ACCENT[0]),
     hexToRgb(LIVE_FALLBACK_ACCENT[1])
@@ -558,7 +638,11 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
     image.onload = () => {
       const context = getPaletteContext();
       if (!context) {
-        resolve(fallback);
+        resolve({
+          primary: fallback[0],
+          secondary: fallback[1],
+          analysis: null
+        });
         return;
       }
 
@@ -571,6 +655,7 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
       let rejectedPixels = 0;
       let saturationSum = 0;
       let weightedSaturationSum = 0;
+      let weightSum = 0;
       let brightnessSum = 0;
       let alphaSum = 0;
 
@@ -610,6 +695,7 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
         acceptedPixels += 1;
         saturationSum += saturation;
         weightedSaturationSum += saturation * weight;
+        weightSum += weight;
         brightnessSum += brightness;
         alphaSum += alpha;
 
@@ -642,7 +728,11 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
         .sort((left, right) => right.score - left.score);
 
       if (ranked.length === 0) {
-        resolve(fallback);
+        resolve({
+          primary: fallback[0],
+          secondary: fallback[1],
+          analysis: null
+        });
         return;
       }
 
@@ -653,7 +743,7 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
         rejectedPixels,
         rejectionRate: (rejectedPixels / Math.max(acceptedPixels + rejectedPixels, 1)),
         averageSaturation: saturationSum / Math.max(acceptedPixels, 1),
-        weightedAverageSaturation: weightedSaturationSum / Math.max(acceptedPixels, 1),
+        weightedAverageSaturation: weightedSaturationSum / Math.max(weightSum, 1),
         averageBrightness: brightnessSum / Math.max(acceptedPixels, 1),
         averageAlpha: alphaSum / Math.max(acceptedPixels, 1),
         topBuckets: ranked.slice(0, 5).map((entry) => ({
@@ -728,10 +818,18 @@ function extractColours(src: string): Promise<[RGB, RGB]> {
         console.groupEnd();
       }
 
-      resolve([primary, secondary]);
+      resolve({
+        primary,
+        secondary,
+        analysis
+      });
     };
 
-    image.onerror = () => resolve(fallback);
+    image.onerror = () => resolve({
+      primary: fallback[0],
+      secondary: fallback[1],
+      analysis: null
+    });
     image.src = src;
   });
 }
@@ -1189,18 +1287,18 @@ function App() {
     let cancelled = false;
     const fallback = idleState ? NEUTRAL_ACCENT : LIVE_FALLBACK_ACCENT;
 
-    const applyTheme = (primary: RGB, secondary: RGB) => {
+    const applyTheme = (primary: RGB, secondary: RGB, analysis: ColourAnalysis | null) => {
       if (!cancelled) {
-        setAccentTheme(buildAccentTheme(primary, secondary, idleState));
+        setAccentTheme(buildAccentTheme(primary, secondary, analysis, idleState));
       }
     };
 
     if (trackInfo.album_art) {
       extractColours(trackInfo.album_art)
-        .then(([primary, secondary]) => applyTheme(primary, secondary))
-        .catch(() => applyTheme(hexToRgb(fallback[0]), hexToRgb(fallback[1])));
+        .then(({ primary, secondary, analysis }) => applyTheme(primary, secondary, analysis))
+        .catch(() => applyTheme(hexToRgb(fallback[0]), hexToRgb(fallback[1]), null));
     } else {
-      applyTheme(hexToRgb(fallback[0]), hexToRgb(fallback[1]));
+      applyTheme(hexToRgb(fallback[0]), hexToRgb(fallback[1]), null);
     }
 
     return () => {
