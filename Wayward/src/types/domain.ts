@@ -85,6 +85,7 @@ export interface BadgeStyle {
   background: string;
   border: string;
   shadow: string;
+  text: string;
 }
 
 export interface AccentTheme {
@@ -106,6 +107,8 @@ export interface AccentTheme {
   badgeBorder: string;
   badgeMutedBorder: string;
   badgeShadow: string;
+  badgeText: string;
+  badgeMutedText: string;
   btnHoverBg: string;
   btnHoverBorder: string;
   btnHoverShadow: string;

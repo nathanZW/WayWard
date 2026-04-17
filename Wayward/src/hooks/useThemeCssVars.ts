@@ -23,6 +23,8 @@ export function useThemeCssVars(): void {
     root.style.setProperty("--badge-border", accentTheme.badgeBorder);
     root.style.setProperty("--badge-muted-border", accentTheme.badgeMutedBorder);
     root.style.setProperty("--badge-shadow", accentTheme.badgeShadow);
+    root.style.setProperty("--badge-text", accentTheme.badgeText);
+    root.style.setProperty("--badge-muted-text", accentTheme.badgeMutedText);
     root.style.setProperty("--btn-hover-bg", accentTheme.btnHoverBg);
     root.style.setProperty("--btn-hover-border", accentTheme.btnHoverBorder);
     root.style.setProperty("--btn-hover-shadow", accentTheme.btnHoverShadow);

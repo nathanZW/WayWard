@@ -25,6 +25,8 @@
   --badge-border: rgba(185, 124, 70, 0.78);
   --badge-muted-border: rgba(166, 112, 66, 0.68);
   --badge-shadow: rgba(92, 52, 24, 0.28);
+  --badge-text: rgba(255, 250, 244, 0.98);
+  --badge-muted-text: rgba(255, 250, 244, 0.94);
 }
 
 /* ── Container ─────────────────────────────────────────────── */
@@ -433,7 +435,7 @@
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--badge-muted-text);
   font-weight: 600;
   letter-spacing: 0.02em;
   transition: background 1.2s ease, border-color 1.2s ease, color 1.2s ease, box-shadow 1.2s ease;
@@ -443,7 +445,7 @@
 .badge.mood {
   background: var(--badge-bg);
   border-color: var(--badge-border);
-  color: var(--accent-ink);
+  color: var(--badge-text);
   box-shadow: 0 0 14px var(--badge-shadow);
 }
 
@@ -452,10 +454,6 @@
   border-color: rgba(244, 237, 226, 0.2);
   color: rgba(255, 248, 240, 0.88);
   box-shadow: none;
-}
-
-.now-playing-card .badge.active {
-  color: rgba(255, 255, 255, 0.98);
 }
 
 /* ── Progress Bar ──────────────────────────────────────────── */
@@ -914,7 +912,7 @@
 .swipe-card .badge {
   background: var(--badge-muted-bg);
   border-color: var(--badge-muted-border);
-  color: rgba(255, 255, 255, 0.98);
+  color: var(--badge-muted-text);
   font-size: 11px;
   box-shadow: 0 0 12px var(--badge-shadow);
 }

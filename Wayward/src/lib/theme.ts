@@ -21,7 +21,9 @@ const DARK_RGB: RGB = { r: 13, g: 15, b: 20 };
 const LIGHT_RGB: RGB = { r: 248, g: 244, b: 236 };
 const OFF_WHITE_RGB: RGB = { r: 255, g: 250, b: 244 };
 const BADGE_TEXT_MIN_CONTRAST = 4.5;
-const BADGE_SURFACE_MIN_CONTRAST = 1.18;
+const BADGE_SURFACE_MIN_CONTRAST = 1.32;
+const BADGE_BORDER_SURFACE_MIN_CONTRAST = 1.2;
+const BADGE_BORDER_FILL_MIN_CONTRAST = 1.08;
 const MOOD_IDLE_LABEL = "Soft focus";
 const MOOD_SHADOW_LUMINANCE_MAX = 0.2;
 const MOOD_DARK_LUMINANCE_MAX = 0.28;
@@ -173,6 +175,41 @@ function getContrastRatio(a: RGB, b: RGB): number {
   const lighter = Math.max(getLuminance(a), getLuminance(b));
   const darker = Math.min(getLuminance(a), getLuminance(b));
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+function selectReadableText(background: RGB): { color: RGB; contrast: number } {
+  const candidates = [OFF_WHITE_RGB, LIGHT_RGB, DARK_RGB];
+  let selected = { color: OFF_WHITE_RGB, contrast: 0 };
+
+  for (const candidate of candidates) {
+    const contrast = getContrastRatio(background, candidate);
+    if (contrast > selected.contrast) {
+      selected = { color: candidate, contrast };
+    }
+  }
+
+  return selected;
+}
+
+function createContrastAwareBadgeBorder(fill: RGB, visibleFill: RGB, surface: RGB, text: RGB, alpha: number): string {
+  const borderAlpha = clamp(alpha + 0.12, 0.44, 0.96);
+  const strokeSteps = [0.22, 0.34, 0.46, 0.58, 0.7];
+  let selectedBorder = mixRgb(fill, text, 0.34);
+
+  for (const strokeMix of strokeSteps) {
+    const border = mixRgb(fill, text, strokeMix);
+    const visibleBorder = compositeRgb(surface, border, borderAlpha);
+
+    if (
+      getContrastRatio(visibleBorder, surface) >= BADGE_BORDER_SURFACE_MIN_CONTRAST
+      && getContrastRatio(visibleBorder, visibleFill) >= BADGE_BORDER_FILL_MIN_CONTRAST
+    ) {
+      selectedBorder = border;
+      break;
+    }
+  }
+
+  return toRgba(selectedBorder, borderAlpha);
 }
 
 function getSaturation(rgb: RGB): number {
@@ -334,7 +371,6 @@ function describeMood(primary: RGB, secondary: RGB, analysis: ColourAnalysis | n
 function createContrastAwareBadgeStyle(
   base: RGB,
   surface: RGB,
-  primary: RGB,
   secondary: RGB,
   options?: {
     minimumTextContrast?: number;
@@ -351,19 +387,24 @@ function createContrastAwareBadgeStyle(
 
   let selectedFill = mixRgb(base, DARK_RGB, 0.42);
   let selectedAlpha = maximumAlpha;
+  let selectedText = selectReadableText(compositeRgb(surface, selectedFill, selectedAlpha));
+  let selectedVisibleFill = compositeRgb(surface, selectedFill, selectedAlpha);
 
   outer: for (const darkness of darknessSteps) {
     const fill = darkness === 0 ? base : mixRgb(base, DARK_RGB, darkness);
 
     for (let alpha = minimumAlpha; alpha <= maximumAlpha + 0.001; alpha += 0.06) {
       const visibleFill = compositeRgb(surface, fill, alpha);
+      const text = selectReadableText(visibleFill);
 
       if (
-        getContrastRatio(visibleFill, OFF_WHITE_RGB) >= minimumTextContrast
+        text.contrast >= minimumTextContrast
         && getContrastRatio(visibleFill, surface) >= minimumSurfaceContrast
       ) {
         selectedFill = fill;
         selectedAlpha = alpha;
+        selectedText = text;
+        selectedVisibleFill = visibleFill;
         break outer;
       }
     }
@@ -371,8 +412,9 @@ function createContrastAwareBadgeStyle(
 
   return {
     background: toRgba(selectedFill, selectedAlpha),
-    border: toRgba(mixRgb(selectedFill, primary, 0.36), clamp(selectedAlpha + 0.1, 0.42, 0.92)),
-    shadow: toRgba(mixRgb(selectedFill, secondary, 0.22), clamp(selectedAlpha * 0.5, 0.18, 0.38))
+    border: createContrastAwareBadgeBorder(selectedFill, selectedVisibleFill, surface, selectedText.color, selectedAlpha),
+    shadow: toRgba(mixRgb(selectedFill, secondary, 0.22), clamp(selectedAlpha * 0.5, 0.18, 0.38)),
+    text: toHex(selectedText.color)
   };
 }
 
@@ -385,11 +427,10 @@ export function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, analysi
   }
 
   const blend = mixRgb(primary, secondary, idle ? 0.42 : 0.34);
-  const surfaceBase = mixRgb(blend, DARK_RGB, idle ? 0.82 : 0.48);
+  const badgeSurfaceBase = mixRgb(blend, DARK_RGB, idle ? 0.78 : 0.24);
   const badgeStyle = createContrastAwareBadgeStyle(
     mixRgb(primary, { r: 255, g: 255, b: 255 }, 0.7),
-    surfaceBase,
-    primary,
+    badgeSurfaceBase,
     secondary,
     {
       minimumAlpha: idle ? 0.24 : 0.32,
@@ -398,11 +439,10 @@ export function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, analysi
   );
   const badgeMutedStyle = createContrastAwareBadgeStyle(
     mixRgb(blend, { r: 255, g: 255, b: 255 }, idle ? 0.68 : 0.62),
-    surfaceBase,
-    secondary,
+    badgeSurfaceBase,
     primary,
     {
-      minimumSurfaceContrast: 1.12,
+      minimumSurfaceContrast: 1.24,
       minimumAlpha: idle ? 0.22 : 0.28,
       maximumAlpha: idle ? 0.62 : 0.76
     }
@@ -430,6 +470,8 @@ export function buildAccentTheme(primaryInput: RGB, secondaryInput: RGB, analysi
     badgeBorder: badgeStyle.border,
     badgeMutedBorder: badgeMutedStyle.border,
     badgeShadow: badgeStyle.shadow,
+    badgeText: badgeStyle.text,
+    badgeMutedText: badgeMutedStyle.text,
     btnHoverBg: toRgba(mixRgb(primary, { r: 255, g: 255, b: 255 }, 0.76), 0.32),
     btnHoverBorder: toRgba(primary, 0.38),
     btnHoverShadow: toRgba(mixRgb(primary, secondary, 0.3), 0.38),
