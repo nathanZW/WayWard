@@ -43,6 +43,14 @@ impl TrackInfo {
             album_art: None,
         }
     }
+
+    fn is_neutral(&self) -> bool {
+        self.title.trim().is_empty()
+            && self.artist.trim().is_empty()
+            && self.album_title.trim().is_empty()
+            && self.album_art.is_none()
+            && self.duration <= 0.0
+    }
 }
 
 fn normalize_source_app_id(source_app_id: &str) -> String {
@@ -217,7 +225,6 @@ pub async fn emit_current_state(app: &AppHandle) {
     let session = match select_allowed_session(&manager) {
         Some(session) => session,
         None => {
-            let _ = app.emit("smtc-update", TrackInfo::neutral());
             return;
         }
     };
@@ -241,6 +248,11 @@ pub async fn emit_current_state(app: &AppHandle) {
                 duration,
                 album_art: None, // Skipped for speed; poll loop will fill this in.
             };
+
+            if info.is_neutral() {
+                return;
+            }
+
             let _ = app.emit("smtc-update", info);
         }
     }
@@ -260,9 +272,11 @@ pub fn start_smtc_listener(app: AppHandle) {
         let mut cached_track_key: Option<String> = None;
         let mut cached_album_art: Option<String> = None;
         let mut had_session = false;
+        let mut consecutive_session_misses = 0u8;
 
         loop {
             if let Some(session) = select_allowed_session(&manager) {
+                consecutive_session_misses = 0;
                 had_session = true;
                 let status = get_playback_status_str(&session);
                 let (position, duration) = get_timeline(&session);
@@ -296,7 +310,9 @@ pub fn start_smtc_listener(app: AppHandle) {
                                 album_art: cached_album_art.clone(),
                             };
 
-                            let _ = app_handle.emit("smtc-update", info);
+                            if !info.is_neutral() {
+                                let _ = app_handle.emit("smtc-update", info);
+                            }
                         }
                         Err(e) => {
                             eprintln!("Failed to get media properties: {:?}", e);
@@ -304,10 +320,15 @@ pub fn start_smtc_listener(app: AppHandle) {
                     }
                 }
             } else if had_session {
-                had_session = false;
-                cached_track_key = None;
-                cached_album_art = None;
-                let _ = app_handle.emit("smtc-update", TrackInfo::neutral());
+                consecutive_session_misses = consecutive_session_misses.saturating_add(1);
+
+                if consecutive_session_misses >= 2 {
+                    had_session = false;
+                    consecutive_session_misses = 0;
+                    cached_track_key = None;
+                    cached_album_art = None;
+                    let _ = app_handle.emit("smtc-update", TrackInfo::neutral());
+                }
             }
             let poll_ms = app_handle
                 .get_webview_window("main")
