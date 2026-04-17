@@ -105,6 +105,10 @@ function SearchBar() {
                   <div className="shortcut-keys"><kbd>C</kbd></div>
                   <span>Copy active card</span>
                 </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>S</kbd></div>
+                  <span>Search active card</span>
+                </div>
               </div>
             </div>
           </div>

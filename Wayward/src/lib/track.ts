@@ -12,7 +12,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function isNeutralTrack(track: TrackInfo): boolean {
+export function isNeutralTrack(track: Pick<TrackInfo, "title" | "artist" | "album_title" | "album_art" | "duration">): boolean {
   return !track.title.trim()
     && !track.artist.trim()
     && !track.album_title.trim()
@@ -307,11 +307,7 @@ export interface DeckModelInput {
 export function buildDeckModel(input: DeckModelInput): DeckModel {
   const normalizedTrack = normalizeTrackMetadata(input.trackInfo);
   const lookupKey = buildLookupKey(normalizedTrack);
-  const idleState = isNeutralTrack({
-    ...input.trackInfo,
-    position: 0,
-    status: "Idle"
-  });
+  const idleState = isNeutralTrack(input.trackInfo);
   const discoverCards = idleState
     ? [buildIdleCard("Discover", input.mood)]
     : buildDiscoverCards(input.trackInfo, normalizedTrack, input.lastfmContext, input.mood, input.lastfmStatus);

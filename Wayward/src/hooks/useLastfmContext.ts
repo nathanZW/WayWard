@@ -25,11 +25,7 @@ export function useLastfmContext(): void {
     trackIdentity.album_title
   ]);
   const lookupKey = useMemo(() => buildLookupKey(normalizedTrack), [normalizedTrack]);
-  const idleState = useMemo(() => isNeutralTrack({
-    ...trackIdentity,
-    position: 0,
-    status: "Idle"
-  }), [trackIdentity]);
+  const idleState = useMemo(() => isNeutralTrack(trackIdentity), [trackIdentity]);
 
   useEffect(() => {
     if (idleState || !normalizedTrack.lookupTitle.trim() || !normalizedTrack.lookupArtist.trim()) {

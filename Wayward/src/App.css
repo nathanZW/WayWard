@@ -686,7 +686,7 @@
 }
 
 .swipe-card.center .swipe-card-content {
-  padding-right: 34px;
+  padding-right: 70px;
 }
 
 .swipe-card.left,
@@ -738,10 +738,18 @@
   display: none;
 }
 
-.swipe-card-copy-btn {
+.swipe-card-actions {
   position: absolute;
   top: 9px;
   right: 9px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 2;
+}
+
+.swipe-card-copy-btn,
+.swipe-card-search-btn {
   width: 28px;
   height: 28px;
   border-radius: 8px;
@@ -752,7 +760,6 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 2;
   transition:
     background 0.2s ease,
     border-color 0.2s ease,
@@ -797,7 +804,8 @@
   transform: scale(1);
 }
 
-.swipe-card-copy-btn:hover {
+.swipe-card-copy-btn:hover,
+.swipe-card-search-btn:hover {
   background: var(--btn-hover-bg);
   border-color: var(--btn-hover-border);
   color: var(--text-primary);
@@ -805,7 +813,8 @@
   box-shadow: 0 6px 18px var(--btn-hover-shadow);
 }
 
-.swipe-card-copy-btn:focus-visible {
+.swipe-card-copy-btn:focus-visible,
+.swipe-card-search-btn:focus-visible {
   outline: none;
   background: var(--btn-hover-bg);
   border-color: var(--btn-hover-border);

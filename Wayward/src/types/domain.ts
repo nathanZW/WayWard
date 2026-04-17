@@ -3,6 +3,7 @@ export interface TrackInfo {
   artist: string;
   album_artist: string;
   album_title: string;
+  source_player: string;
   status: string;
   position: number;
   duration: number;
@@ -159,6 +160,7 @@ export const NEUTRAL_TRACK: TrackInfo = {
   artist: "",
   album_artist: "",
   album_title: "",
+  source_player: "",
   status: "Idle",
   position: 0,
   duration: 0,

@@ -22,6 +22,7 @@ pub struct TrackInfo {
     artist: String,
     album_artist: String,
     album_title: String,
+    source_player: String,
     status: String,
     position: f64,
     duration: f64,
@@ -35,6 +36,7 @@ impl TrackInfo {
             artist: String::new(),
             album_artist: String::new(),
             album_title: String::new(),
+            source_player: String::new(),
             status: "Idle".to_string(),
             position: 0.0,
             duration: 0.0,
@@ -58,6 +60,26 @@ fn is_allowed_source_app_id(source_app_id: &str) -> bool {
         .any(|keyword| normalized.contains(keyword))
 }
 
+fn display_source_player(source_app_id: &str) -> Option<&'static str> {
+    let normalized = normalize_source_app_id(source_app_id);
+
+    if normalized.contains("applemusic") {
+        Some("Apple Music")
+    } else if normalized.contains("amazonmusic") {
+        Some("Amazon Music")
+    } else if normalized.contains("spotify") {
+        Some("Spotify")
+    } else if normalized.contains("tidal") {
+        Some("TIDAL")
+    } else if normalized.contains("deezer") {
+        Some("Deezer")
+    } else if normalized.contains("youtubemusic") {
+        Some("YouTube Music")
+    } else {
+        None
+    }
+}
+
 fn session_source_app_id(
     session: &GlobalSystemMediaTransportControlsSession,
 ) -> Option<String> {
@@ -68,6 +90,14 @@ fn session_is_allowed(session: &GlobalSystemMediaTransportControlsSession) -> bo
     session_source_app_id(session)
         .map(|source_id| is_allowed_source_app_id(&source_id))
         .unwrap_or(false)
+}
+
+fn session_source_player(session: &GlobalSystemMediaTransportControlsSession) -> String {
+    session_source_app_id(session)
+        .as_deref()
+        .and_then(display_source_player)
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn select_allowed_session(
@@ -194,6 +224,7 @@ pub async fn emit_current_state(app: &AppHandle) {
 
     let status = get_playback_status_str(&session);
     let (position, duration) = get_timeline(&session);
+    let source_player = session_source_player(&session);
 
     // Get media properties (title, artist, etc.) but skip album art for speed.
     // The poll loop will fill in album art on the next tick.
@@ -204,6 +235,7 @@ pub async fn emit_current_state(app: &AppHandle) {
                 artist: props.Artist().unwrap_or_default().to_string(),
                 album_artist: props.AlbumArtist().unwrap_or_default().to_string(),
                 album_title: props.AlbumTitle().unwrap_or_default().to_string(),
+                source_player,
                 status: status.to_string(),
                 position,
                 duration,
@@ -234,6 +266,7 @@ pub fn start_smtc_listener(app: AppHandle) {
                 had_session = true;
                 let status = get_playback_status_str(&session);
                 let (position, duration) = get_timeline(&session);
+                let source_player = session_source_player(&session);
 
                 if let Ok(properties_async) = session.TryGetMediaPropertiesAsync() {
                     match properties_async.await {
@@ -256,6 +289,7 @@ pub fn start_smtc_listener(app: AppHandle) {
                                 artist,
                                 album_artist,
                                 album_title,
+                                source_player,
                                 status: status.to_string(),
                                 position,
                                 duration,

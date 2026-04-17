@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { copyDeckCard, searchDeckCard } from "../lib/deckCardActions";
 import { buildDeckModel } from "../lib/track";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { useUiStore } from "../stores/useUiStore";
@@ -57,7 +58,7 @@ export function useKeyboardShortcuts(): void {
     if (!targetCard) return;
 
     try {
-      await navigator.clipboard.writeText(`${targetCard.title} ${targetCard.subtitle}`);
+      await copyDeckCard(targetCard);
       useUiStore.getState().setCopiedCardKey(targetCard.key);
 
       if (copyFeedbackTimeoutRef.current !== null) {
@@ -70,6 +71,37 @@ export function useKeyboardShortcuts(): void {
       }, 2000);
     } catch (error) {
       console.error("Failed to copy active card:", error);
+    }
+  });
+
+  const searchActiveCard = useEffectEvent(async () => {
+    const playbackState = usePlaybackStore.getState();
+    const uiState = useUiStore.getState();
+    if (uiState.activeTab === "Queue") return;
+
+    const deck = buildDeckModel({
+      trackInfo: {
+        title: playbackState.trackInfo.title,
+        artist: playbackState.trackInfo.artist,
+        album_artist: playbackState.trackInfo.album_artist,
+        album_title: playbackState.trackInfo.album_title,
+        album_art: playbackState.trackInfo.album_art,
+        duration: playbackState.trackInfo.duration
+      },
+      lastfmContext: playbackState.lastfmContext,
+      lastfmStatus: playbackState.lastfmStatus,
+      activeTab: uiState.activeTab,
+      discoverCardIndex: uiState.discoverCardIndex,
+      albumCardIndex: uiState.albumCardIndex,
+      mood: playbackState.accentTheme.mood
+    });
+    const targetCard = deck.centerCard;
+    if (!targetCard) return;
+
+    try {
+      await searchDeckCard(targetCard, playbackState.trackInfo.source_player);
+    } catch (error) {
+      console.error("Failed to search active card:", error);
     }
   });
 
@@ -168,6 +200,11 @@ export function useKeyboardShortcuts(): void {
     if (!typingInEditable && !event.ctrlKey && !event.metaKey && !event.altKey && lowerKey === "c") {
       event.preventDefault();
       void copyActiveCard();
+    }
+
+    if (!typingInEditable && !event.ctrlKey && !event.metaKey && !event.altKey && lowerKey === "s") {
+      event.preventDefault();
+      void searchActiveCard();
     }
   });
 

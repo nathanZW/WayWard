@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
-import { Check, Clipboard } from "lucide-react";
+import { Check, Clipboard, Search } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useDeckModel } from "../hooks/useDeckModel";
+import { copyDeckCard, searchDeckCard } from "../lib/deckCardActions";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 import { useUiStore } from "../stores/useUiStore";
 import type { DeckCard, LaneMotionDirection, LaneTab } from "../types/domain";
@@ -15,6 +16,7 @@ function renderSwipeCard(
   tabClassName: string,
   role: "left" | "center" | "right",
   onCopy?: () => void,
+  onSearch?: () => void,
   isCopied = false
 ) {
   const isPreview = role !== "center";
@@ -25,21 +27,35 @@ function renderSwipeCard(
       aria-hidden={isPreview}
     >
       {!isPreview && tabClassName !== "queue" && (
-        <button
-          className={`swipe-card-copy-btn ${isCopied ? "is-copied" : ""}`}
-          type="button"
-          aria-label={isCopied ? "Copied" : "Copy active card"}
-          title={isCopied ? "Copied" : "Copy active card"}
-          onClick={(event) => {
-            event.stopPropagation();
-            onCopy?.();
-          }}
-        >
-          <span className="swipe-card-copy-icon" aria-hidden="true">
-            <Clipboard size={14} className="swipe-card-copy-icon-base" />
-            <Check size={14} className="swipe-card-copy-icon-check" />
-          </span>
-        </button>
+        <div className="swipe-card-actions">
+          <button
+            className={`swipe-card-copy-btn ${isCopied ? "is-copied" : ""}`}
+            type="button"
+            aria-label={isCopied ? "Copied" : "Copy active card"}
+            title={isCopied ? "Copied" : "Copy active card"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onCopy?.();
+            }}
+          >
+            <span className="swipe-card-copy-icon" aria-hidden="true">
+              <Clipboard size={14} className="swipe-card-copy-icon-base" />
+              <Check size={14} className="swipe-card-copy-icon-check" />
+            </span>
+          </button>
+          <button
+            className="swipe-card-search-btn"
+            type="button"
+            aria-label="Search active card"
+            title="Search active card"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSearch?.();
+            }}
+          >
+            <Search size={14} />
+          </button>
+        </div>
       )}
       <div className="album-art album-art-large">
         {card.imageSrc ? (
@@ -70,7 +86,10 @@ function renderSwipeCard(
 
 function DeckLane() {
   const deck = useDeckModel();
-  const windowVisible = usePlaybackStore((state) => state.windowVisible);
+  const { sourcePlayer, windowVisible } = usePlaybackStore(useShallow((state) => ({
+    sourcePlayer: state.trackInfo.source_player,
+    windowVisible: state.windowVisible
+  })));
   const { activeTab, copiedCardKey, laneMotion } = useUiStore(useShallow((state) => ({
     activeTab: state.activeTab,
     copiedCardKey: state.copiedCardKey,
@@ -173,7 +192,7 @@ function DeckLane() {
 
   const copyActiveCard = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(`${deck.centerCard.title} ${deck.centerCard.subtitle}`);
+      await copyDeckCard(deck.centerCard);
       setCopiedCardKey(deck.centerCard.key);
 
       if (copyFeedbackTimeoutRef.current !== null) {
@@ -188,6 +207,14 @@ function DeckLane() {
       console.error("Failed to copy active card:", error);
     }
   }, [deck.centerCard.key, deck.centerCard.subtitle, deck.centerCard.title, setCopiedCardKey]);
+
+  const searchActiveCard = useCallback(async () => {
+    try {
+      await searchDeckCard(deck.centerCard, sourcePlayer);
+    } catch (error) {
+      console.error("Failed to search active card:", error);
+    }
+  }, [deck.centerCard, sourcePlayer]);
 
   const tabClassName = useMemo(() => activeTab.toLowerCase().replace(/\s+/g, "-"), [activeTab]);
   const laneMotionClass = laneMotion && laneMotion.tab === activeTab
@@ -215,6 +242,7 @@ function DeckLane() {
                 tabClassName,
                 "center",
                 copyActiveCard,
+                searchActiveCard,
                 copiedCardKey === deck.centerCard.key
               )}
             </div>
