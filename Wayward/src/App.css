@@ -229,14 +229,14 @@
 }
 
 .shortcuts-dropdown {
-  background: var(--surface-strong);
-  border: 1px solid var(--surface-border);
+  background: rgba(28, 28, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
   padding: 10px;
-  min-width: 200px;
+  width: min(480px, calc(100vw - 32px));
   box-shadow:
-    0 18px 48px rgba(0, 0, 0, 0.42),
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    0 20px 52px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
 }
 
 .shortcuts-header {
@@ -245,10 +245,19 @@
   align-items: center;
   margin-bottom: 10px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.shortcuts-list {
+  display: grid;
+  grid-template-rows: repeat(5, minmax(0, auto));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px 14px;
+  align-items: start;
 }
 
 .close-shortcuts {
@@ -273,15 +282,23 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 0;
+  min-width: 0;
+  padding: 6px 8px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: rgba(255, 250, 244, 0.78);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .shortcut-keys {
   display: flex;
   gap: 4px;
   align-items: center;
+  flex-shrink: 0;
+}
+
+.shortcut-item span {
+  min-width: 0;
 }
 
 .shortcut-keys kbd {
@@ -292,7 +309,7 @@
   font-weight: 600;
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 4px;
 }
 
@@ -1026,6 +1043,31 @@
   .swipe-card-stack.lane-backward .swipe-card-slot.right .swipe-card.preview {
     animation: none;
   }
+}
+
+@media (max-width: 760px) {
+  .shortcuts-dropdown {
+    width: min(440px, calc(100vw - 24px));
+  }
+
+  .shortcuts-list {
+    gap: 6px 12px;
+  }
+}
+
+@media (max-width: 560px) {
+  .shortcuts-dropdown {
+    width: min(320px, calc(100vw - 24px));
+  }
+
+  .shortcuts-list {
+    grid-template-rows: none;
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
 }
 
 @media (max-width: 760px) {

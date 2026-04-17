@@ -68,41 +68,43 @@ function SearchBar() {
                   <X size={14} />
                 </button>
               </div>
-              <div className="shortcut-item">
-                <div className="shortcut-keys"><kbd>O</kbd></div>
-                <span>Toggle shortcuts</span>
-              </div>
-              <div className="shortcut-item">
-                <div className="shortcut-keys"><kbd>Space</kbd></div>
-                <span>Play/Pause</span>
-              </div>
-              <div className="shortcut-item">
-                <div className="shortcut-keys"><kbd>&larr;</kbd></div>
-                <span>Previous track</span>
-              </div>
-              <div className="shortcut-item">
-                <div className="shortcut-keys"><kbd>&rarr;</kbd></div>
-                <span>Next track</span>
-              </div>
-              <div className="shortcut-item">
-                <div className="shortcut-keys"><kbd>1</kbd></div>
-                <span>Discover</span>
-              </div>
-              <div className="shortcut-item">
-                <div className="shortcut-keys"><kbd>2</kbd></div>
-                <span>Similar albums</span>
-              </div>
-              <div className="shortcut-item">
-                <div className="shortcut-keys"><kbd>J</kbd></div>
-                <span>Previous card</span>
-              </div>
-              <div className="shortcut-item">
-                <div className="shortcut-keys"><kbd>L</kbd></div>
-                <span>Next card</span>
-              </div>
-              <div className="shortcut-item">
-                <div className="shortcut-keys"><kbd>C</kbd></div>
-                <span>Copy active card</span>
+              <div className="shortcuts-list">
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>O</kbd></div>
+                  <span>Toggle shortcuts</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>Space</kbd></div>
+                  <span>Play/Pause</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>&larr;</kbd></div>
+                  <span>Previous track</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>&rarr;</kbd></div>
+                  <span>Next track</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>1</kbd></div>
+                  <span>Discover</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>2</kbd></div>
+                  <span>Similar albums</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>J</kbd></div>
+                  <span>Previous card</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>L</kbd></div>
+                  <span>Next card</span>
+                </div>
+                <div className="shortcut-item">
+                  <div className="shortcut-keys"><kbd>C</kbd></div>
+                  <span>Copy active card</span>
+                </div>
               </div>
             </div>
           </div>
