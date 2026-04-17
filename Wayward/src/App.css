@@ -101,15 +101,19 @@
   0% {
     transform: translate(0, 0) scale(1);
   }
+
   25% {
     transform: translate(12%, -8%) scale(1.04);
   }
+
   50% {
     transform: translate(-10%, 14%) scale(1.02);
   }
+
   75% {
     transform: translate(8%, 6%) scale(1.06);
   }
+
   100% {
     transform: translate(-14%, -10%) scale(1.03);
   }
@@ -355,8 +359,12 @@
 }
 
 .album-art-image {
-  animation: albumArtFadeIn 220ms ease;
   filter: saturate(1.30) contrast(1.03) brightness(1.05);
+}
+
+.now-playing-card .album-art-image,
+.swipe-card.center .album-art-image {
+  animation: albumArtFadeIn 600ms ease;
 }
 
 /* ── Track Info ─────────────────────────────────────────────── */
@@ -920,10 +928,13 @@
   from {
     opacity: 0;
     transform: scale(0.97);
+    filter: saturate(1.30) contrast(1.03) brightness(0.4);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
+    filter: saturate(1.30) contrast(1.03) brightness(1.05);
   }
 }
 
@@ -932,6 +943,7 @@
     opacity: 0.6;
     transform: translateX(26px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -943,6 +955,7 @@
     opacity: 0.6;
     transform: translateX(-26px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -954,6 +967,7 @@
     opacity: 0.48;
     transform: translateX(28px) scale(0.94);
   }
+
   to {
     opacity: 0.4;
     transform: translateX(0) scale(0.9);
@@ -965,6 +979,7 @@
     opacity: 0.48;
     transform: translateX(-28px) scale(0.94);
   }
+
   to {
     opacity: 0.4;
     transform: translateX(0) scale(0.9);
@@ -976,6 +991,7 @@
     opacity: 0.32;
     transform: translateX(18px) scale(0.86);
   }
+
   to {
     opacity: 0.4;
     transform: translateX(0) scale(0.9);
@@ -987,6 +1003,7 @@
     opacity: 0.32;
     transform: translateX(-18px) scale(0.86);
   }
+
   to {
     opacity: 0.4;
     transform: translateX(0) scale(0.9);
@@ -994,6 +1011,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .ambient-background,
   .swipe-card,
   .album-art-image {
