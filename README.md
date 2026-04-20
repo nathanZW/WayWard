@@ -4,6 +4,8 @@ Wayward is a lightweight music recommendation overlay for Windows created as a t
 
 The app is designed around a keyboard-first flow: fast reveal, quick actions, and minimal need to reach for a mouse or trackpad.
 
+The application source lives in `Wayward/`.
+
 ## What It Does
 
 - Watches the current media session through Windows SMTC integration.
@@ -48,6 +50,7 @@ Direct Apple Music playback is planned next.
 ### Install Dependencies
 
 ```bash
+cd Wayward
 bun install
 ```
 
@@ -57,17 +60,18 @@ Wayward needs a Last.fm API key before it can fetch recommendations.
 
 You can either:
 
-1. Create a local `.env` file in the project root with:
+1. Create a local `.env` file in `Wayward/` with:
 
 ```env
 LASTFM_API_KEY=your_key_here
 ```
 
-2. Or launch the app and paste the key into the setup screen. After a successful verification request, Wayward writes the key back to the local `.env` file for you.
+2. Or launch the app and paste the key into the setup screen. After a successful verification request, Wayward writes the key back to the local `Wayward/.env` file for you.
 
 ### Run In Development
 
 ```bash
+cd Wayward
 bun run tauri dev
 ```
 
@@ -76,6 +80,7 @@ The Tauri config uses `bun run dev` for the frontend dev server and points the d
 ### Build
 
 ```bash
+cd Wayward
 bun run build
 bun run tauri build
 ```
@@ -97,19 +102,20 @@ bun run tauri build
 ## Project Structure
 
 ```text
-src/
-  components/   UI building blocks
-  hooks/        playback, theming, keyboard, and Last.fm hooks
-  lib/          shared helpers for tracks, actions, cache, and theme logic
-  stores/       Zustand state stores
-  types/        shared domain types
+Wayward/
+  src/
+    components/   UI building blocks
+    hooks/        playback, theming, keyboard, and Last.fm hooks
+    lib/          shared helpers for tracks, actions, cache, and theme logic
+    stores/       Zustand state stores
+    types/        shared domain types
 
-src-tauri/
-  src/lib.rs    Tauri entry point, window setup, shortcut registration
-  src/smtc.rs   Windows media session integration
-  src/lastfm.rs Last.fm setup, validation, and lookup logic
+  src-tauri/
+    src/lib.rs    Tauri entry point, window setup, shortcut registration
+    src/smtc.rs   Windows media session integration
+    src/lastfm.rs Last.fm setup, validation, and lookup logic
 ```
 
 ## License
 
-This repository includes a [`LICENSE`](../LICENSE) file at the workspace root.
+This repository includes a [`LICENSE`](LICENSE) file at the workspace root.
