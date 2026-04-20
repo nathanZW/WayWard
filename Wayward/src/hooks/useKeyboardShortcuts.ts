@@ -19,7 +19,7 @@ function isEditableElement(element: Element | null): boolean {
       || element.isContentEditable);
 }
 
-export function useKeyboardShortcuts(): void {
+export function useKeyboardShortcuts(enabled = true): void {
   const laneMotionTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
@@ -209,6 +209,10 @@ export function useKeyboardShortcuts(): void {
   });
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       void onKeyDown(event);
     };
@@ -226,5 +230,5 @@ export function useKeyboardShortcuts(): void {
         window.clearTimeout(copyFeedbackTimeoutRef.current);
       }
     };
-  }, [onKeyDown]);
+  }, [enabled, onKeyDown]);
 }

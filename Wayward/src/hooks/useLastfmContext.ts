@@ -8,7 +8,7 @@ import type { LastfmContext } from "../types/domain";
 
 const lastfmCache = new LruCache<string, LastfmContext>(50);
 
-export function useLastfmContext(): void {
+export function useLastfmContext(enabled = true): void {
   const trackIdentity = usePlaybackStore(useShallow((state) => ({
     title: state.trackInfo.title,
     artist: state.trackInfo.artist,
@@ -28,7 +28,7 @@ export function useLastfmContext(): void {
   const idleState = useMemo(() => isNeutralTrack(trackIdentity), [trackIdentity]);
 
   useEffect(() => {
-    if (idleState || !normalizedTrack.lookupTitle.trim() || !normalizedTrack.lookupArtist.trim()) {
+    if (!enabled || idleState || !normalizedTrack.lookupTitle.trim() || !normalizedTrack.lookupArtist.trim()) {
       usePlaybackStore.getState().setLastfmState({
         lastfmContext: null,
         lastfmStatus: "idle",
@@ -80,5 +80,5 @@ export function useLastfmContext(): void {
     return () => {
       cancelled = true;
     };
-  }, [idleState, lookupKey, normalizedTrack.displayAlbum, normalizedTrack.lookupArtist, normalizedTrack.lookupTitle]);
+  }, [enabled, idleState, lookupKey, normalizedTrack.displayAlbum, normalizedTrack.lookupArtist, normalizedTrack.lookupTitle]);
 }

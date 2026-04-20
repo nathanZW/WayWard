@@ -42,6 +42,13 @@ export interface LastfmContext {
 }
 
 export type LastfmStatus = "idle" | "loading" | "ready" | "error";
+export type LastfmSetupStateStatus = "checking" | "missing" | "invalid" | "ready";
+export type LastfmSetupUiStatus = LastfmSetupStateStatus | "submitting";
+
+export interface LastfmSetupState {
+  status: Exclude<LastfmSetupStateStatus, "checking">;
+  message: string | null;
+}
 
 export interface RGB {
   r: number;

@@ -114,9 +114,202 @@
 
 .search-section,
 .main-content,
-.footer {
+.footer,
+.setup-stage {
   position: relative;
   z-index: 1;
+}
+
+.setup-stage {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 14px 18px;
+  overflow-y: auto;
+}
+
+.setup-panel {
+  width: min(440px, 100%);
+  max-height: 100%;
+  padding: 18px 18px 16px;
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(26, 28, 34, 0.78), rgba(15, 17, 22, 0.82)),
+    rgba(12, 14, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 12px 24px var(--accent-shadow);
+  overflow-y: auto;
+}
+
+.setup-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.setup-title {
+  margin: 14px 0 8px;
+  font-size: clamp(22px, 4vw, 28px);
+  line-height: 1.06;
+  color: var(--text-primary);
+}
+
+.setup-body,
+.setup-note,
+.setup-status,
+.setup-error {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.setup-body {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.setup-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.setup-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.setup-input {
+  width: 100%;
+  padding: 11px 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.setup-input:focus {
+  border-color: var(--search-focus-border);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 0 3px var(--search-focus-ring);
+}
+
+.setup-submit {
+  margin-top: 2px;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent-c1), var(--accent-c2));
+  color: #fffdf8;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+}
+
+.setup-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.24);
+}
+
+.setup-submit:disabled,
+.setup-input:disabled {
+  opacity: 0.72;
+  cursor: wait;
+}
+
+.setup-feedback {
+  min-height: 0;
+  margin-top: 12px;
+}
+
+.setup-status {
+  color: rgba(255, 250, 244, 0.86);
+  font-size: 12px;
+}
+
+.setup-error {
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: rgba(133, 37, 37, 0.24);
+  border: 1px solid rgba(255, 138, 138, 0.26);
+  color: rgba(255, 224, 224, 0.96);
+  font-size: 12px;
+}
+
+.setup-note {
+  margin-top: 8px;
+  color: rgba(255, 250, 244, 0.64);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.setup-note code {
+  color: rgba(255, 250, 244, 0.92);
+}
+
+@media (max-height: 420px) {
+  .setup-stage {
+    align-items: stretch;
+    padding: 10px 14px;
+  }
+
+  .setup-panel {
+    width: min(420px, 100%);
+    margin: auto;
+    padding: 14px 14px 12px;
+    border-radius: 18px;
+  }
+
+  .setup-title {
+    margin: 10px 0 6px;
+    font-size: 20px;
+  }
+
+  .setup-body {
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .setup-form {
+    gap: 6px;
+    margin-top: 12px;
+  }
+
+  .setup-input {
+    padding: 9px 11px;
+    border-radius: 11px;
+  }
+
+  .setup-submit {
+    padding: 9px 12px;
+  }
+
+  .setup-feedback {
+    margin-top: 8px;
+  }
+
+  .setup-note {
+    margin-top: 6px;
+    font-size: 10px;
+  }
 }
 
 .search-section {
@@ -1053,6 +1246,20 @@
 }
 
 @media (max-width: 560px) {
+  .setup-stage {
+    padding: 12px;
+  }
+
+  .setup-panel {
+    width: min(100%, 420px);
+    padding: 16px 16px 14px;
+    border-radius: 18px;
+  }
+
+  .setup-title {
+    font-size: 21px;
+  }
+
   .shortcuts-dropdown {
     width: min(320px, calc(100vw - 24px));
   }

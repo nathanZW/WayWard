@@ -6,15 +6,6 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 use window_vibrancy::apply_acrylic;
 
-fn load_local_env() {
-    for candidate in [".env", "../.env"] {
-        if dotenvy::from_filename(candidate).is_ok() {
-            eprintln!("[env] loaded {candidate}");
-            return;
-        }
-    }
-}
-
 #[command]
 async fn toggle_playback(app: AppHandle) -> Result<(), String> {
     let manager = smtc::request_session_manager().await?;
@@ -94,7 +85,7 @@ pub fn run() {
             .build())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            load_local_env();
+            lastfm::load_local_env();
 
             if let Err(e) = app.global_shortcut().register(alt_w) {
                 eprintln!("Failed to register global shortcut: {:?}", e);
@@ -113,6 +104,8 @@ pub fn run() {
             toggle_playback,
             skip_next,
             skip_previous,
+            lastfm::get_lastfm_setup_state,
+            lastfm::submit_lastfm_api_key,
             lastfm::lookup_lastfm_context
         ])
         .run(tauri::generate_context!())

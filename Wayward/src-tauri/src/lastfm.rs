@@ -1,8 +1,13 @@
 use reqwest::Client;
 use serde::Serialize;
 use serde_json::Value;
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 const LASTFM_API_ROOT: &str = "https://ws.audioscrobbler.com/2.0/";
+const LASTFM_API_KEY_ENV: &str = "LASTFM_API_KEY";
 
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct LastfmContext {
@@ -39,6 +44,69 @@ struct LastfmAlbumMatch {
     rank: Option<u32>,
 }
 
+#[allow(dead_code)]
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LastfmSetupStatus {
+    Checking,
+    Missing,
+    Invalid,
+    Ready,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct LastfmSetupState {
+    pub status: LastfmSetupStatus,
+    pub message: Option<String>,
+}
+
+impl LastfmSetupState {
+    fn missing(message: impl Into<Option<String>>) -> Self {
+        Self {
+            status: LastfmSetupStatus::Missing,
+            message: message.into(),
+        }
+    }
+
+    fn invalid(message: impl Into<Option<String>>) -> Self {
+        Self {
+            status: LastfmSetupStatus::Invalid,
+            message: message.into(),
+        }
+    }
+
+    fn ready(message: impl Into<Option<String>>) -> Self {
+        Self {
+            status: LastfmSetupStatus::Ready,
+            message: message.into(),
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_lastfm_setup_state() -> LastfmSetupState {
+    let env_path = resolve_write_env_path();
+
+    let stored_key = match read_lastfm_api_key_from_env_file(&env_path) {
+        Ok(api_key) => api_key,
+        Err(error) => return LastfmSetupState::invalid(Some(error)),
+    };
+
+    inspect_lastfm_setup_state(stored_key).await
+}
+
+#[tauri::command]
+pub async fn submit_lastfm_api_key(api_key: String) -> Result<LastfmSetupState, String> {
+    let trimmed_key = validate_api_key(&api_key)?.to_string();
+    verify_lastfm_api_key(&trimmed_key).await?;
+
+    let env_path = resolve_write_env_path();
+    upsert_lastfm_api_key(&env_path, &trimmed_key)?;
+    env::set_var(LASTFM_API_KEY_ENV, &trimmed_key);
+
+    Ok(LastfmSetupState::ready(None))
+}
+
 #[tauri::command]
 pub async fn lookup_lastfm_context(
     artist: String,
@@ -61,11 +129,7 @@ pub async fn lookup_lastfm_context(
         trimmed_album_title
     );
 
-    let client = Client::builder()
-        .user_agent("Wayward/0.1.0")
-        .build()
-        .map_err(|error| format!("Failed to create Last.fm client: {error}"))?;
-
+    let client = build_lastfm_client()?;
     let track_candidates = build_track_lookup_candidates(trimmed_track);
     let mut first_error: Option<String> = None;
 
@@ -96,6 +160,188 @@ pub async fn lookup_lastfm_context(
     Err(first_error.unwrap_or_else(|| {
         "Last.fm did not return any metadata for the current song.".to_string()
     }))
+}
+
+pub fn load_local_env() {
+    for candidate in env_candidate_paths() {
+        if dotenvy::from_path(&candidate).is_ok() {
+            eprintln!("[env] loaded {}", candidate.display());
+            return;
+        }
+    }
+}
+
+async fn inspect_lastfm_setup_state(api_key: Option<String>) -> LastfmSetupState {
+    let Some(api_key) = api_key else {
+        return missing_lastfm_setup_state();
+    };
+
+    setup_state_from_verification(verify_lastfm_api_key(&api_key).await)
+}
+
+fn missing_lastfm_setup_state() -> LastfmSetupState {
+    LastfmSetupState::missing(Some(
+        "Enter your Last.fm API key to unlock recommendations.".to_string(),
+    ))
+}
+
+fn setup_state_from_verification(verification: Result<(), String>) -> LastfmSetupState {
+    match verification {
+        Ok(()) => LastfmSetupState::ready(None),
+        Err(error) => LastfmSetupState::invalid(Some(format!(
+            "Saved Last.fm API key failed verification: {error}"
+        ))),
+    }
+}
+
+fn current_workdir() -> PathBuf {
+    env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn project_root_dir() -> PathBuf {
+    let cwd = current_workdir();
+    let in_src_tauri = cwd
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.eq_ignore_ascii_case("src-tauri"))
+        .unwrap_or(false);
+
+    if in_src_tauri {
+        cwd.parent().unwrap_or(&cwd).to_path_buf()
+    } else {
+        cwd
+    }
+}
+
+fn project_root_env_path() -> PathBuf {
+    project_root_dir().join(".env")
+}
+
+fn env_candidate_paths() -> Vec<PathBuf> {
+    let cwd = current_workdir();
+    let mut candidates = vec![cwd.join(".env"), project_root_env_path()];
+    candidates.dedup();
+    candidates
+}
+
+fn resolve_write_env_path() -> PathBuf {
+    env_candidate_paths()
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .unwrap_or_else(project_root_env_path)
+}
+
+fn read_lastfm_api_key_from_env_file(path: &Path) -> Result<Option<String>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let entries = dotenvy::from_path_iter(path)
+        .map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
+
+    for entry in entries {
+        let (key, value) =
+            entry.map_err(|error| format!("Failed to parse {}: {error}", path.display()))?;
+
+        if key == LASTFM_API_KEY_ENV {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Ok(Some(trimmed.to_string()));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn upsert_lastfm_api_key(path: &Path, api_key: &str) -> Result<(), String> {
+    let trimmed_key = validate_api_key(api_key)?;
+    let existing = if path.exists() {
+        fs::read_to_string(path)
+            .map_err(|error| format!("Failed to read {}: {error}", path.display()))?
+    } else {
+        String::new()
+    };
+
+    let had_trailing_newline = existing.ends_with('\n');
+    let mut updated_lines = Vec::new();
+    let mut replaced = false;
+
+    for line in existing.lines() {
+        if env_line_key(line).is_some_and(|key| key == LASTFM_API_KEY_ENV) {
+            if !replaced {
+                updated_lines.push(format!("{LASTFM_API_KEY_ENV}={trimmed_key}"));
+                replaced = true;
+            }
+            continue;
+        }
+
+        updated_lines.push(line.to_string());
+    }
+
+    if !replaced {
+        updated_lines.push(format!("{LASTFM_API_KEY_ENV}={trimmed_key}"));
+    }
+
+    let mut updated = updated_lines.join("\n");
+    if updated.is_empty() || had_trailing_newline || existing.is_empty() {
+        updated.push('\n');
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to prepare {}: {error}", parent.display()))?;
+    }
+
+    fs::write(path, updated).map_err(|error| format!("Failed to write {}: {error}", path.display()))
+}
+
+fn env_line_key(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return None;
+    }
+
+    let (key, _) = trimmed.split_once('=')?;
+    if key.is_empty() {
+        return None;
+    }
+
+    let valid = key
+        .chars()
+        .all(|character| character == '_' || character.is_ascii_alphanumeric());
+
+    if valid { Some(key) } else { None }
+}
+
+fn validate_api_key(api_key: &str) -> Result<&str, String> {
+    let trimmed = api_key.trim();
+    if trimmed.is_empty() {
+        Err("A Last.fm API key is required.".to_string())
+    } else {
+        Ok(trimmed)
+    }
+}
+
+fn build_lastfm_client() -> Result<Client, String> {
+    Client::builder()
+        .user_agent("Wayward/0.1.0")
+        .build()
+        .map_err(|error| format!("Failed to create Last.fm client: {error}"))
+}
+
+async fn verify_lastfm_api_key(api_key: &str) -> Result<(), String> {
+    let trimmed_key = validate_api_key(api_key)?;
+    let client = build_lastfm_client()?;
+
+    fetch_method_with_api_key(
+        &client,
+        "chart.gettopartists",
+        vec![("limit".to_string(), "1".to_string())],
+        Some(trimmed_key),
+    )
+    .await
+    .map(|_| ())
 }
 
 async fn fetch_context_candidate(
@@ -199,15 +445,27 @@ async fn fetch_method(
     method: &str,
     params: Vec<(String, String)>,
 ) -> Result<Value, String> {
-    let api_key = std::env::var("LASTFM_API_KEY")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            format!(
-                "LASTFM_API_KEY is not set; Last.fm lookup is unavailable for {method}."
-            )
-        })?;
+    fetch_method_with_api_key(client, method, params, None).await
+}
+
+async fn fetch_method_with_api_key(
+    client: &Client,
+    method: &str,
+    params: Vec<(String, String)>,
+    api_key_override: Option<&str>,
+) -> Result<Value, String> {
+    let api_key = match api_key_override {
+        Some(api_key) => validate_api_key(api_key)?.to_string(),
+        None => env::var(LASTFM_API_KEY_ENV)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "{LASTFM_API_KEY_ENV} is not set; Last.fm lookup is unavailable for {method}."
+                )
+            })?,
+    };
 
     let mut query = vec![
         ("method".to_string(), method.to_string()),
@@ -503,4 +761,113 @@ fn is_lookup_decorator(value: &str) -> bool {
     ]
     .iter()
     .any(|keyword| normalized.contains(keyword))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        process,
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn unique_temp_env_path(label: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        let counter = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+        env::temp_dir().join(format!(
+            "wayward-{label}-{}-{counter}-{stamp}.env",
+            process::id()
+        ))
+    }
+
+    fn read_file(path: &Path) -> String {
+        fs::read_to_string(path).expect("expected test env file to exist")
+    }
+
+    #[test]
+    fn upsert_creates_env_file_when_missing() {
+        let path = unique_temp_env_path("create");
+
+        upsert_lastfm_api_key(&path, "fresh-key").expect("expected env upsert to succeed");
+
+        assert_eq!(read_file(&path), "LASTFM_API_KEY=fresh-key\n");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn upsert_replaces_existing_key_and_preserves_other_lines() {
+        let path = unique_temp_env_path("replace");
+        fs::write(
+            &path,
+            "FOO=bar\nLASTFM_API_KEY=old-key\nKEEP=true\nLASTFM_API_KEY=duplicate\n",
+        )
+        .expect("expected test env file to be written");
+
+        upsert_lastfm_api_key(&path, "new-key").expect("expected env upsert to succeed");
+
+        let contents = read_file(&path);
+        assert!(contents.contains("FOO=bar\n"));
+        assert!(contents.contains("KEEP=true\n"));
+        assert!(contents.contains("LASTFM_API_KEY=new-key\n"));
+        assert_eq!(contents.matches("LASTFM_API_KEY=").count(), 1);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn upsert_rejects_blank_keys() {
+        let path = unique_temp_env_path("blank");
+
+        let error = upsert_lastfm_api_key(&path, "   ").expect_err("expected blank key failure");
+
+        assert_eq!(error, "A Last.fm API key is required.");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn read_key_returns_none_for_missing_file() {
+        let path = unique_temp_env_path("missing");
+
+        let key = read_lastfm_api_key_from_env_file(&path).expect("expected missing file read");
+
+        assert_eq!(key, None);
+    }
+
+    #[test]
+    fn setup_state_is_missing_without_a_key() {
+        let state = missing_lastfm_setup_state();
+
+        assert_eq!(state.status, LastfmSetupStatus::Missing);
+    }
+
+    #[test]
+    fn setup_state_is_ready_for_verified_keys() {
+        let state = setup_state_from_verification(Ok(()));
+
+        assert_eq!(state.status, LastfmSetupStatus::Ready);
+        assert_eq!(state.message, None);
+    }
+
+    #[test]
+    fn setup_state_is_invalid_for_failed_verification() {
+        let state = setup_state_from_verification(Err(
+            "Last.fm error 10 for chart.gettopartists: Invalid API key".to_string()
+        ));
+
+        assert_eq!(state.status, LastfmSetupStatus::Invalid);
+        assert!(
+            state
+                .message
+                .as_deref()
+                .is_some_and(|message| message.contains("Invalid API key"))
+        );
+    }
 }
