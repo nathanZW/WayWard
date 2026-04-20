@@ -1,10 +1,13 @@
 # Wayward
 
-Wayward is a lightweight music recommendation overlay for Windows created as a test run for a possible future Apple Music and Spotify integration. Built with Tauri, React, TypeScript, and Rust, it lives in the background, stays out of the taskbar, and can be summoned with `Alt+W` to surface context-aware recommendations based on the track currently playing on your system. Playback running through a browser is not currently detected; the app only responds to supported Windows media sessions.
+Wayward is a lightweight music recommendation overlay for Windows created as a mock-up for a possible future Apple Music and Spotify integration. Built with Tauri, React, TypeScript, Rust, and developed agentically. It lives in the background, stays out of the taskbar, and can be summoned with `Alt+W` to surface context-aware recommendations based on the track currently playing on your system. Playback running through a browser is not currently detected; the app only responds to supported Windows media sessions.
 
 The app is designed around a keyboard-first flow: fast reveal, quick actions, and minimal need to reach for a mouse or trackpad.
 
-The application source lives in `Wayward/`.
+
+<img width="1837" height="924" alt="image" src="https://github.com/user-attachments/assets/60d39c37-32cc-4c8a-bc6a-2c8c26ec451d" />
+
+
 
 ## What It Does
 
