@@ -1,35 +1,70 @@
 import { memo, useMemo } from "react";
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { useShallow } from "zustand/react/shallow";
 import { formatTime, isNeutralTrack, normalizeTrackMetadata } from "../lib/track";
 import { usePlaybackStore } from "../stores/usePlaybackStore";
 
+/**
+ * Isolated progress bar that subscribes only to position + duration.
+ * This is the only part of the card that re-renders on every SMTC poll
+ * tick (~1 Hz), keeping the heavier parent card (box-shadows, album art,
+ * badges) stable between track changes.
+ */
+function ProgressTimeline() {
+  const { position, duration } = usePlaybackStore(useShallow((state) => ({
+    position: state.trackInfo.position,
+    duration: state.trackInfo.duration
+  })));
+
+  const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
+
+  return (
+    <div className="progress-bar-container">
+      <span>{formatTime(position)}</span>
+      <div className="progress-bar">
+        <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+      </div>
+      <span>{formatTime(duration)}</span>
+    </div>
+  );
+}
+
+const MemoizedProgressTimeline = memo(ProgressTimeline);
+
 function NowPlayingCard() {
-  const trackInfo = usePlaybackStore((state) => state.trackInfo);
-  const idleState = isNeutralTrack(trackInfo);
-  const normalizedTrack = useMemo(() => normalizeTrackMetadata(trackInfo), [
-    trackInfo.title,
-    trackInfo.artist,
-    trackInfo.album_artist,
-    trackInfo.album_title
+  const { title, artist, albumArtist, albumTitle, albumArt, status, duration } = usePlaybackStore(useShallow((state) => ({
+    title: state.trackInfo.title,
+    artist: state.trackInfo.artist,
+    albumArtist: state.trackInfo.album_artist,
+    albumTitle: state.trackInfo.album_title,
+    albumArt: state.trackInfo.album_art,
+    status: state.trackInfo.status,
+    duration: state.trackInfo.duration
+  })));
+
+  const trackIdentity = { title, artist, album_artist: albumArtist, album_title: albumTitle, album_art: albumArt, duration };
+  const idleState = isNeutralTrack(trackIdentity);
+  const normalizedTrack = useMemo(() => normalizeTrackMetadata(trackIdentity), [
+    title,
+    artist,
+    albumArtist,
+    albumTitle
   ]);
 
-  const progressPercent = trackInfo.duration > 0
-    ? (trackInfo.position / trackInfo.duration) * 100
-    : 0;
-  const trackTitle = idleState ? "Nothing playing" : trackInfo.title;
+  const trackTitle = idleState ? "Nothing playing" : title;
   const trackSubtitle = idleState
     ? "Waiting for a music stream"
     : [normalizedTrack.displayArtist || "Unknown artist", normalizedTrack.displayAlbum].filter(Boolean).join(" / ");
-  const statusLabel = idleState ? "Ready" : trackInfo.status;
+  const statusLabel = idleState ? "Ready" : status;
 
   return (
     <div className="now-playing-card">
       <div className="album-art">
-        {trackInfo.album_art ? (
+        {albumArt ? (
           <img
-            key={trackInfo.album_art}
-            src={trackInfo.album_art}
+            key={albumArt}
+            src={albumArt}
             alt="Album art"
             className="album-art-inner album-art-image"
             decoding="async"
@@ -45,13 +80,7 @@ function NowPlayingCard() {
           <div className="badges">
             <span className={`badge active ${idleState ? "idle" : ""}`}>{statusLabel}</span>
           </div>
-          <div className="progress-bar-container">
-            <span>{formatTime(trackInfo.position)}</span>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
-            </div>
-            <span>{formatTime(trackInfo.duration)}</span>
-          </div>
+          <MemoizedProgressTimeline />
         </div>
       </div>
       <div className="playback-controls">
@@ -67,7 +96,7 @@ function NowPlayingCard() {
           onClick={() => void invoke("toggle_playback").catch((error) => console.error("Failed to toggle playback:", error))}
           type="button"
         >
-          {trackInfo.status === "Playing"
+          {status === "Playing"
             ? <Pause size={22} fill="currentColor" />
             : <Play size={22} fill="currentColor" />}
         </button>
