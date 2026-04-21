@@ -1,25 +1,43 @@
 mod lastfm;
 mod smtc;
-use tauri::{AppHandle, Emitter, Manager};
 use tauri::command;
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use window_vibrancy::apply_acrylic;
+
+fn interpret_smtc_command_result(action: &str, accepted: bool) -> Result<(), String> {
+    if accepted {
+        Ok(())
+    } else {
+        Err(format!(
+            "The current media session did not accept the {action} command."
+        ))
+    }
+}
+
+async fn complete_smtc_command(
+    app: &AppHandle,
+    action: &str,
+    accepted: bool,
+) -> Result<(), String> {
+    // Emit the latest state even when the player rejects the command so the UI stays truthful.
+    smtc::emit_current_state(app).await;
+    interpret_smtc_command_result(action, accepted)
+}
 
 #[command]
 async fn toggle_playback(app: AppHandle) -> Result<(), String> {
     let manager = smtc::request_session_manager().await?;
     let session = smtc::get_allowed_session(&manager)?;
 
-    session.TryTogglePlayPauseAsync()
+    let accepted = session
+        .TryTogglePlayPauseAsync()
         .map_err(|e| format!("Failed to toggle: {:?}", e))?
         .await
         .map_err(|e| format!("Failed to toggle (async): {:?}", e))?;
 
-    // Immediately emit the new state so the UI updates without waiting for the poll.
-    smtc::emit_current_state(&app).await;
-
-    Ok(())
+    complete_smtc_command(&app, "toggle playback", accepted).await
 }
 
 #[command]
@@ -27,14 +45,13 @@ async fn skip_next(app: AppHandle) -> Result<(), String> {
     let manager = smtc::request_session_manager().await?;
     let session = smtc::get_allowed_session(&manager)?;
 
-    session.TrySkipNextAsync()
+    let accepted = session
+        .TrySkipNextAsync()
         .map_err(|e| format!("Failed to skip next: {:?}", e))?
         .await
         .map_err(|e| format!("Failed to skip next (async): {:?}", e))?;
 
-    smtc::emit_current_state(&app).await;
-
-    Ok(())
+    complete_smtc_command(&app, "skip next", accepted).await
 }
 
 #[command]
@@ -42,14 +59,13 @@ async fn skip_previous(app: AppHandle) -> Result<(), String> {
     let manager = smtc::request_session_manager().await?;
     let session = smtc::get_allowed_session(&manager)?;
 
-    session.TrySkipPreviousAsync()
+    let accepted = session
+        .TrySkipPreviousAsync()
         .map_err(|e| format!("Failed to skip previous: {:?}", e))?
         .await
         .map_err(|e| format!("Failed to skip previous (async): {:?}", e))?;
 
-    smtc::emit_current_state(&app).await;
-
-    Ok(())
+    complete_smtc_command(&app, "skip previous", accepted).await
 }
 
 #[tauri::command]
@@ -62,27 +78,29 @@ pub fn run() {
     let alt_w = Shortcut::new(Some(Modifiers::ALT), Code::KeyW);
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_global_shortcut::Builder::new()
-            .with_handler(move |app, shortcut, event| {
-                if shortcut == &alt_w && event.state() == ShortcutState::Pressed {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let is_visible = window.is_visible().unwrap_or(false);
-                        if is_visible {
-                            let _ = window.hide();
-                            let _ = app.emit("window-visibility", false);
-                        } else {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                            let _ = app.emit("window-visibility", true);
-                            let app_handle = app.clone();
-                            tauri::async_runtime::spawn(async move {
-                                smtc::emit_current_state(&app_handle).await;
-                            });
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |app, shortcut, event| {
+                    if shortcut == &alt_w && event.state() == ShortcutState::Pressed {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let is_visible = window.is_visible().unwrap_or(false);
+                            if is_visible {
+                                let _ = window.hide();
+                                let _ = app.emit("window-visibility", false);
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                                let _ = app.emit("window-visibility", true);
+                                let app_handle = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    smtc::emit_current_state(&app_handle).await;
+                                });
+                            }
                         }
                     }
-                }
-            })
-            .build())
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             lastfm::load_local_env();
@@ -110,4 +128,26 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::interpret_smtc_command_result;
+
+    #[test]
+    fn smtc_command_result_accepts_true_outcomes() {
+        let result = interpret_smtc_command_result("toggle playback", true);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn smtc_command_result_rejects_false_outcomes() {
+        let result = interpret_smtc_command_result("skip next", false);
+
+        assert_eq!(
+            result.expect_err("expected rejected command to surface an error"),
+            "The current media session did not accept the skip next command."
+        );
+    }
 }

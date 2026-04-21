@@ -108,6 +108,27 @@ export function useKeyboardShortcuts(enabled = true): void {
   const onKeyDown = useEffectEvent(async (event: KeyboardEvent) => {
     const lowerKey = event.key.toLowerCase();
     const typingInEditable = isEditableElement(document.activeElement);
+
+    if (event.key === "Escape") {
+      if (typingInEditable) {
+        event.preventDefault();
+        useUiStore.getState().setShowShortcuts(false);
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+        return;
+      }
+
+      useUiStore.getState().setShowShortcuts(false);
+      usePlaybackStore.getState().setWindowVisible(false);
+      await getCurrentWindow().hide();
+      return;
+    }
+
+    if (typingInEditable) {
+      return;
+    }
+
     const uiState = useUiStore.getState();
     const playbackState = usePlaybackStore.getState();
     const deck = buildDeckModel({
@@ -126,18 +147,6 @@ export function useKeyboardShortcuts(enabled = true): void {
       albumCardIndex: uiState.albumCardIndex,
       mood: playbackState.accentTheme.mood
     });
-
-    if (event.key === "Escape") {
-      if (typingInEditable) {
-        useUiStore.getState().setShowShortcuts(false);
-        return;
-      }
-
-      useUiStore.getState().setShowShortcuts(false);
-      usePlaybackStore.getState().setWindowVisible(false);
-      await getCurrentWindow().hide();
-      return;
-    }
 
     if (event.key === "ArrowLeft") {
       event.preventDefault();

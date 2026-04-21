@@ -4,10 +4,12 @@ use serde_json::Value;
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 const LASTFM_API_ROOT: &str = "https://ws.audioscrobbler.com/2.0/";
 const LASTFM_API_KEY_ENV: &str = "LASTFM_API_KEY";
+const LASTFM_REQUEST_TIMEOUT_SECS: u64 = 6;
 
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct LastfmContext {
@@ -142,24 +144,20 @@ pub async fn lookup_lastfm_context(
         )
         .await;
 
-        if context_has_data(&context) {
+        if let Some((matched_candidate, context)) =
+            apply_candidate_result(track_candidate, context, candidate_error, &mut first_error)
+        {
             eprintln!(
-                "[lastfm] lookup result artist='{trimmed_artist}' track='{track_candidate}' tags={} similar_tracks={} top_albums={}",
+                "[lastfm] lookup result artist='{trimmed_artist}' track='{matched_candidate}' tags={} similar_tracks={} top_albums={}",
                 context.source.tags.len(),
                 context.similar_tracks.len(),
                 context.top_albums.len()
             );
             return Ok(context);
         }
-
-        if let Some(error) = candidate_error {
-            first_error.get_or_insert(error);
-        }
     }
 
-    Err(first_error.unwrap_or_else(|| {
-        "Last.fm did not return any metadata for the current song.".to_string()
-    }))
+    Err(finalize_lookup_error(first_error))
 }
 
 pub fn load_local_env() {
@@ -311,7 +309,11 @@ fn env_line_key(line: &str) -> Option<&str> {
         .chars()
         .all(|character| character == '_' || character.is_ascii_alphanumeric());
 
-    if valid { Some(key) } else { None }
+    if valid {
+        Some(key)
+    } else {
+        None
+    }
 }
 
 fn validate_api_key(api_key: &str) -> Result<&str, String> {
@@ -326,6 +328,7 @@ fn validate_api_key(api_key: &str) -> Result<&str, String> {
 fn build_lastfm_client() -> Result<Client, String> {
     Client::builder()
         .user_agent("Wayward/0.1.0")
+        .timeout(Duration::from_secs(LASTFM_REQUEST_TIMEOUT_SECS))
         .build()
         .map_err(|error| format!("Failed to create Last.fm client: {error}"))
 }
@@ -352,74 +355,48 @@ async fn fetch_context_candidate(
 ) -> (LastfmContext, Option<String>) {
     let mut first_error: Option<String> = None;
 
-    let track_info = match fetch_method(
-        client,
-        "track.getInfo",
-        vec![
-            ("artist".to_string(), artist.to_string()),
-            ("track".to_string(), track.to_string()),
-        ],
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(error) => {
-            first_error.get_or_insert(error);
-            Value::Null
-        }
-    };
+    let artist_param = artist.to_string();
+    let track_param = track.to_string();
+    let (track_info_result, track_tags_result, similar_tracks_result, top_albums_result) = tokio::join!(
+        fetch_method(
+            client,
+            "track.getInfo",
+            vec![
+                ("artist".to_string(), artist_param.clone()),
+                ("track".to_string(), track_param.clone()),
+            ],
+        ),
+        fetch_method(
+            client,
+            "track.getTopTags",
+            vec![
+                ("artist".to_string(), artist_param.clone()),
+                ("track".to_string(), track_param.clone()),
+            ],
+        ),
+        fetch_method(
+            client,
+            "track.getSimilar",
+            vec![
+                ("artist".to_string(), artist_param.clone()),
+                ("track".to_string(), track_param.clone()),
+                ("limit".to_string(), "8".to_string()),
+            ],
+        ),
+        fetch_method(
+            client,
+            "artist.getTopAlbums",
+            vec![
+                ("artist".to_string(), artist_param),
+                ("limit".to_string(), "8".to_string()),
+            ],
+        )
+    );
 
-    let track_tags = match fetch_method(
-        client,
-        "track.getTopTags",
-        vec![
-            ("artist".to_string(), artist.to_string()),
-            ("track".to_string(), track.to_string()),
-        ],
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(error) => {
-            first_error.get_or_insert(error);
-            Value::Null
-        }
-    };
-
-    let similar_tracks = match fetch_method(
-        client,
-        "track.getSimilar",
-        vec![
-            ("artist".to_string(), artist.to_string()),
-            ("track".to_string(), track.to_string()),
-            ("limit".to_string(), "8".to_string()),
-        ],
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(error) => {
-            first_error.get_or_insert(error);
-            Value::Null
-        }
-    };
-
-    let top_albums = match fetch_method(
-        client,
-        "artist.getTopAlbums",
-        vec![
-            ("artist".to_string(), artist.to_string()),
-            ("limit".to_string(), "8".to_string()),
-        ],
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(error) => {
-            first_error.get_or_insert(error);
-            Value::Null
-        }
-    };
+    let track_info = take_candidate_payload(track_info_result, &mut first_error);
+    let track_tags = take_candidate_payload(track_tags_result, &mut first_error);
+    let similar_tracks = take_candidate_payload(similar_tracks_result, &mut first_error);
+    let top_albums = take_candidate_payload(top_albums_result, &mut first_error);
 
     let mut context = LastfmContext {
         source: parse_source(&track_info, &track_tags),
@@ -438,6 +415,19 @@ async fn fetch_context_candidate(
     context.top_albums.truncate(6);
 
     (context, first_error)
+}
+
+fn take_candidate_payload(
+    result: Result<Value, String>,
+    first_error: &mut Option<String>,
+) -> Value {
+    match result {
+        Ok(value) => value,
+        Err(error) => {
+            first_error.get_or_insert(error);
+            Value::Null
+        }
+    }
 }
 
 async fn fetch_method(
@@ -521,48 +511,56 @@ fn parse_source(track_info: &Value, track_tags: &Value) -> LastfmSource {
 }
 
 fn parse_similar_tracks(payload: &Value) -> Vec<LastfmTrackMatch> {
-    collect_items(payload.get("similartracks").and_then(|value| value.get("track")))
-        .into_iter()
-        .filter_map(|entry| {
-            let name = as_non_empty_string(entry.get("name"))?;
-            let artist = as_non_empty_string(entry.get("artist").and_then(|value| value.get("name")))
-                .or_else(|| as_non_empty_string(entry.get("artist")))?;
+    collect_items(
+        payload
+            .get("similartracks")
+            .and_then(|value| value.get("track")),
+    )
+    .into_iter()
+    .filter_map(|entry| {
+        let name = as_non_empty_string(entry.get("name"))?;
+        let artist = as_non_empty_string(entry.get("artist").and_then(|value| value.get("name")))
+            .or_else(|| as_non_empty_string(entry.get("artist")))?;
 
-            Some(LastfmTrackMatch {
-                name,
-                artist,
-                album: as_non_empty_string(entry.get("album").and_then(|value| value.get("title")))
-                    .or_else(|| as_non_empty_string(entry.get("album"))),
-                image_url: extract_image_url(entry),
-                url: as_non_empty_string(entry.get("url")),
-                match_score: as_f64(entry.get("match")),
-            })
+        Some(LastfmTrackMatch {
+            name,
+            artist,
+            album: as_non_empty_string(entry.get("album").and_then(|value| value.get("title")))
+                .or_else(|| as_non_empty_string(entry.get("album"))),
+            image_url: extract_image_url(entry),
+            url: as_non_empty_string(entry.get("url")),
+            match_score: as_f64(entry.get("match")),
         })
-        .collect()
+    })
+    .collect()
 }
 
 fn parse_top_albums(payload: &Value) -> Vec<LastfmAlbumMatch> {
-    collect_items(payload.get("topalbums").and_then(|value| value.get("album")))
-        .into_iter()
-        .filter_map(|entry| {
-            let name = as_non_empty_string(entry.get("name"))?;
-            let artist = as_non_empty_string(entry.get("artist").and_then(|value| value.get("name")))
-                .or_else(|| as_non_empty_string(entry.get("artist")))?;
+    collect_items(
+        payload
+            .get("topalbums")
+            .and_then(|value| value.get("album")),
+    )
+    .into_iter()
+    .filter_map(|entry| {
+        let name = as_non_empty_string(entry.get("name"))?;
+        let artist = as_non_empty_string(entry.get("artist").and_then(|value| value.get("name")))
+            .or_else(|| as_non_empty_string(entry.get("artist")))?;
 
-            Some(LastfmAlbumMatch {
-                name,
-                artist,
-                image_url: extract_image_url(entry),
-                url: as_non_empty_string(entry.get("url")),
-                listeners: as_non_empty_string(entry.get("playcount"))
-                    .or_else(|| as_non_empty_string(entry.get("listeners"))),
-                rank: entry
-                    .get("@attr")
-                    .and_then(|value| value.get("rank"))
-                    .and_then(|value| as_u32(Some(value))),
-            })
+        Some(LastfmAlbumMatch {
+            name,
+            artist,
+            image_url: extract_image_url(entry),
+            url: as_non_empty_string(entry.get("url")),
+            listeners: as_non_empty_string(entry.get("playcount"))
+                .or_else(|| as_non_empty_string(entry.get("listeners"))),
+            rank: entry
+                .get("@attr")
+                .and_then(|value| value.get("rank"))
+                .and_then(|value| as_u32(Some(value))),
         })
-        .collect()
+    })
+    .collect()
 }
 
 fn collect_items<'a>(value: Option<&'a Value>) -> Vec<&'a Value> {
@@ -576,7 +574,9 @@ fn collect_items<'a>(value: Option<&'a Value>) -> Vec<&'a Value> {
 fn extract_tag_names(value: Option<&Value>) -> Vec<String> {
     collect_items(value)
         .into_iter()
-        .filter_map(|entry| as_non_empty_string(entry.get("name")).or_else(|| as_non_empty_string(Some(entry))))
+        .filter_map(|entry| {
+            as_non_empty_string(entry.get("name")).or_else(|| as_non_empty_string(Some(entry)))
+        })
         .take(4)
         .collect()
 }
@@ -635,7 +635,9 @@ fn as_f64(value: Option<&Value>) -> Option<f64> {
 
 fn as_u32(value: Option<&Value>) -> Option<u32> {
     match value? {
-        Value::Number(number) => number.as_u64().and_then(|number| u32::try_from(number).ok()),
+        Value::Number(number) => number
+            .as_u64()
+            .and_then(|number| u32::try_from(number).ok()),
         Value::String(text) => text.trim().parse::<u32>().ok(),
         _ => None,
     }
@@ -649,6 +651,28 @@ fn context_has_data(context: &LastfmContext) -> bool {
     !context.source.tags.is_empty()
         || !context.similar_tracks.is_empty()
         || !context.top_albums.is_empty()
+}
+
+fn apply_candidate_result(
+    track_candidate: &str,
+    context: LastfmContext,
+    candidate_error: Option<String>,
+    first_error: &mut Option<String>,
+) -> Option<(String, LastfmContext)> {
+    if context_has_data(&context) {
+        return Some((track_candidate.to_string(), context));
+    }
+
+    if let Some(error) = candidate_error {
+        first_error.get_or_insert(error);
+    }
+
+    None
+}
+
+fn finalize_lookup_error(first_error: Option<String>) -> String {
+    first_error
+        .unwrap_or_else(|| "Last.fm did not return any metadata for the current song.".to_string())
 }
 
 fn build_track_lookup_candidates(track: &str) -> Vec<String> {
@@ -791,6 +815,17 @@ mod tests {
         fs::read_to_string(path).expect("expected test env file to exist")
     }
 
+    fn context_with_similar_track(name: &str) -> LastfmContext {
+        LastfmContext {
+            similar_tracks: vec![LastfmTrackMatch {
+                name: name.to_string(),
+                artist: "Test Artist".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn upsert_creates_env_file_when_missing() {
         let path = unique_temp_env_path("create");
@@ -859,15 +894,54 @@ mod tests {
     #[test]
     fn setup_state_is_invalid_for_failed_verification() {
         let state = setup_state_from_verification(Err(
-            "Last.fm error 10 for chart.gettopartists: Invalid API key".to_string()
+            "Last.fm error 10 for chart.gettopartists: Invalid API key".to_string(),
         ));
 
         assert_eq!(state.status, LastfmSetupStatus::Invalid);
-        assert!(
-            state
-                .message
-                .as_deref()
-                .is_some_and(|message| message.contains("Invalid API key"))
+        assert!(state
+            .message
+            .as_deref()
+            .is_some_and(|message| message.contains("Invalid API key")));
+    }
+
+    #[test]
+    fn candidate_selection_returns_first_useful_context() {
+        let mut first_error = None;
+
+        let selected = apply_candidate_result(
+            "first-choice",
+            context_with_similar_track("Track A"),
+            None,
+            &mut first_error,
+        )
+        .expect("expected first candidate to be selected");
+
+        assert_eq!(selected.0, "first-choice");
+        assert_eq!(selected.1.similar_tracks[0].name, "Track A");
+        assert_eq!(first_error, None);
+    }
+
+    #[test]
+    fn candidate_selection_only_falls_back_when_needed() {
+        let mut first_error = None;
+
+        let first = apply_candidate_result(
+            "first-choice",
+            LastfmContext::default(),
+            Some("first failed".to_string()),
+            &mut first_error,
         );
+        let second = apply_candidate_result(
+            "second-choice",
+            context_with_similar_track("Track B"),
+            Some("second failed".to_string()),
+            &mut first_error,
+        )
+        .expect("expected second candidate fallback to be selected");
+
+        assert!(first.is_none());
+        assert_eq!(second.0, "second-choice");
+        assert_eq!(second.1.similar_tracks[0].name, "Track B");
+        assert_eq!(first_error.as_deref(), Some("first failed"));
     }
 }
