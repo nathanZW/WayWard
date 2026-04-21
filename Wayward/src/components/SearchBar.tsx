@@ -29,7 +29,7 @@ function SearchBar() {
           <input
             ref={searchInputRef}
             className="search-input"
-            placeholder="Search or ask for music..."
+            placeholder="Search"
             autoFocus
             onKeyDown={(event) => {
               if (event.key !== "Escape") return;
