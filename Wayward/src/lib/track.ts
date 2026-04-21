@@ -12,12 +12,19 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function hasTrackIdentity(track: Pick<TrackInfo, "title" | "artist" | "album_title">): boolean {
+  return Boolean(
+    track.title.trim()
+    || track.artist.trim()
+    || track.album_title.trim()
+  );
+}
+
 export function isNeutralTrack(track: Pick<TrackInfo, "title" | "artist" | "album_title" | "album_art" | "duration">): boolean {
-  return !track.title.trim()
-    && !track.artist.trim()
-    && !track.album_title.trim()
-    && !track.album_art
-    && track.duration <= 0;
+  // SMTC can briefly report playback state/timing before the next track's
+  // metadata arrives. Treat that handoff gap as neutral so the UI falls back
+  // to the same calm standby state instead of flashing the live fallback theme.
+  return !hasTrackIdentity(track) && !track.album_art;
 }
 
 export function formatTime(secs: number): string {
