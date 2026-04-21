@@ -10,9 +10,9 @@
    ────────────────────────────────────────────────────────────── */
 
 :root {
-  --accent-c1: #8b5cf6;
-  --accent-c2: #ec4899;
-  --accent-glow: rgba(139, 92, 246, 0.33);
+  --accent-c1: #f2ede4;
+  --accent-c2: #d7d1c8;
+  --accent-glow: rgba(232, 224, 213, 0.24);
   --surface-tint: rgba(28, 30, 36, 0.55);
   --surface-strong: rgba(34, 36, 42, 0.68);
   --surface-border: rgba(255, 255, 255, 0.14);

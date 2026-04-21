@@ -1,9 +1,11 @@
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use windows::Foundation::TimeSpan;
-use windows::Storage::Streams::DataReader;
-use windows::Media::Control::{GlobalSystemMediaTransportControlsSession, GlobalSystemMediaTransportControlsSessionManager};
 use windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus;
+use windows::Media::Control::{
+    GlobalSystemMediaTransportControlsSession, GlobalSystemMediaTransportControlsSessionManager,
+};
+use windows::Storage::Streams::DataReader;
 
 const VISIBLE_POLL_MS: u64 = 1000;
 const HIDDEN_POLL_MS: u64 = 3_000;
@@ -51,6 +53,22 @@ impl TrackInfo {
             && self.album_art.is_none()
             && self.duration <= 0.0
     }
+
+    fn is_transitional_placeholder(&self) -> bool {
+        let normalized_title = self
+            .title
+            .trim()
+            .trim_end_matches('.')
+            .trim_end_matches('\u{2026}')
+            .trim()
+            .to_ascii_lowercase();
+
+        normalized_title == "connecting"
+            && self.artist.trim().is_empty()
+            && self.album_artist.trim().is_empty()
+            && self.album_title.trim().is_empty()
+            && self.album_art.is_none()
+    }
 }
 
 fn normalize_source_app_id(source_app_id: &str) -> String {
@@ -88,9 +106,7 @@ fn display_source_player(source_app_id: &str) -> Option<&'static str> {
     }
 }
 
-fn session_source_app_id(
-    session: &GlobalSystemMediaTransportControlsSession,
-) -> Option<String> {
+fn session_source_app_id(session: &GlobalSystemMediaTransportControlsSession) -> Option<String> {
     session.SourceAppUserModelId().ok().map(|id| id.to_string())
 }
 
@@ -189,7 +205,9 @@ fn get_timeline(session: &GlobalSystemMediaTransportControlsSession) -> (f64, f6
     }
 }
 
-async fn get_album_art_base64(session: GlobalSystemMediaTransportControlsSession) -> Option<String> {
+async fn get_album_art_base64(
+    session: GlobalSystemMediaTransportControlsSession,
+) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || {
         tauri::async_runtime::block_on(async {
             let properties = session.TryGetMediaPropertiesAsync().ok()?.await.ok()?;
@@ -208,10 +226,13 @@ async fn get_album_art_base64(session: GlobalSystemMediaTransportControlsSession
             let mut buffer = vec![0u8; size as usize];
             reader.ReadBytes(&mut buffer).ok()?;
 
-            let base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &buffer);
+            let base64 =
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &buffer);
             Some(format!("data:image/jpeg;base64,{}", base64))
         })
-    }).await.ok()?
+    })
+    .await
+    .ok()?
 }
 
 /// Called from toggle_playback / skip commands to immediately emit the new state.
@@ -249,7 +270,8 @@ pub async fn emit_current_state(app: &AppHandle) {
                 album_art: None, // Skipped for speed; poll loop will fill this in.
             };
 
-            if info.is_neutral() {
+            if info.is_neutral() || info.is_transitional_placeholder() {
+                let _ = app.emit("smtc-update", TrackInfo::neutral());
                 return;
             }
 
@@ -310,7 +332,11 @@ pub fn start_smtc_listener(app: AppHandle) {
                                 album_art: cached_album_art.clone(),
                             };
 
-                            if !info.is_neutral() {
+                            if info.is_transitional_placeholder() {
+                                cached_track_key = None;
+                                cached_album_art = None;
+                                let _ = app_handle.emit("smtc-update", TrackInfo::neutral());
+                            } else if !info.is_neutral() {
                                 let _ = app_handle.emit("smtc-update", info);
                             }
                         }
@@ -333,7 +359,13 @@ pub fn start_smtc_listener(app: AppHandle) {
             let poll_ms = app_handle
                 .get_webview_window("main")
                 .and_then(|window| window.is_visible().ok())
-                .map(|is_visible| if is_visible { VISIBLE_POLL_MS } else { HIDDEN_POLL_MS })
+                .map(|is_visible| {
+                    if is_visible {
+                        VISIBLE_POLL_MS
+                    } else {
+                        HIDDEN_POLL_MS
+                    }
+                })
                 .unwrap_or(VISIBLE_POLL_MS);
 
             // Poll faster while visible for smooth timeline updates, slower while hidden
