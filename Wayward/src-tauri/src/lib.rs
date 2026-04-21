@@ -109,7 +109,9 @@ pub fn run() {
                 eprintln!("Failed to register global shortcut: {:?}", e);
             }
 
-            let window = app.get_webview_window("main").unwrap();
+            let window = app
+                .get_webview_window("main")
+                .ok_or_else(|| "main window was not available during setup".to_string())?;
 
             #[cfg(target_os = "windows")]
             let _ = apply_acrylic(&window, Some((18, 18, 20, 130)));
